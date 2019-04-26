@@ -8,6 +8,10 @@
 #include "helpers.h"
 #include "json.hpp"
 
+#include "Vehicle.hpp"
+#include "SFVehicleInfo.hpp"
+#include "PathPlanner.hpp"
+
 // for convenience
 using nlohmann::json;
 using std::string;
@@ -15,7 +19,6 @@ using std::vector;
 
 int main() {
   uWS::Hub h;
-
   // Load up map values for waypoint's x,y,s and d normalized normal vectors
   vector<double> map_waypoints_x;
   vector<double> map_waypoints_y;
@@ -84,21 +87,90 @@ int main() {
           double end_path_s = j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
 
-          // Sensor Fusion Data, a list of all other cars on the same side 
+          // Sensor Fusion Data, a list of all other cars on the same side
           //   of the road.
-          auto sensor_fusion = j[1]["sensor_fusion"];
+          auto sensor_fusion_data = j[1]["sensor_fusion"];
 
           json msgJson;
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+          
+          PathPlanner pp(map_waypoints_x,
+                         map_waypoints_y,
+                         map_waypoints_s,
+                         map_waypoints_dx,
+                         map_waypoints_dy);
 
+          // Extract data and store in corresponding objects
+          Vehicle vehicle(car_x, car_y, car_s, car_d, deg2rad(car_yaw), car_speed);
+          
+          vector<SFVehicleInfo> sensorFusion;
+          for(auto &d: sensor_fusion_data) {
+            sensorFusion.push_back(SFVehicleInfo(d[0], d[1], d[2], d[3], d[4], d[5], d[6]));
+          }
+          
+          std::vector<Eigen::VectorXd> previous_path;
+          for(int i = 0; i < previous_path_x.size(); ++i) {
+            Eigen::VectorXd pt(2);
+            pt << previous_path_x[i], previous_path_y[i];
+            previous_path.push_back(pt);
+          }
+      
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
            */
+          
+          std::vector<std::vector<double>> path = pp.computePath(vehicle, sensorFusion, previous_path);
+          
+          for (int i = 0; i < 50; i++) {
+            next_x_vals.push_back(path[i][0]);
+            next_y_vals.push_back(path[i][1]);
+          }
+          
+          // TEST CODE 1
+          /*double dist_inc = 0.5;
+          for (int i =0; i<50; i++) {
+            double next_s = car_s + (i+1)*dist_inc;
+            double next_d = 6;
+            vector<double> XY = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            next_x_vals.push_back(XY[0]);
+            next_y_vals.push_back(XY[1]);
+          }*/
+          
+          // TEST CODE 2
+          /*double pos_x;
+          double pos_y;
+          double angle;
+          int path_size = previous_path_x.size();
 
+          for (int i = 0; i < path_size; ++i) {
+            next_x_vals.push_back(previous_path_x[i]);
+            next_y_vals.push_back(previous_path_y[i]);
+          }
 
+          if (path_size == 0) {
+             pos_x = car_x;
+             pos_y = car_y;
+             angle = deg2rad(car_yaw);
+          } else {
+             pos_x = previous_path_x[path_size-1];
+             pos_y = previous_path_y[path_size-1];
+
+             double pos_x2 = previous_path_x[path_size-2];
+             double pos_y2 = previous_path_y[path_size-2];
+             angle = atan2(pos_y-pos_y2,pos_x-pos_x2);
+          }
+
+          double dist_inc = 0.5;
+          for (int i = 0; i < 50-path_size; ++i) {    
+            next_x_vals.push_back(pos_x+(dist_inc)*cos(angle+(i+1)*(pi()/100)));
+            next_y_vals.push_back(pos_y+(dist_inc)*sin(angle+(i+1)*(pi()/100)));
+            pos_x += (dist_inc)*cos(angle+(i+1)*(pi()/100));
+            pos_y += (dist_inc)*sin(angle+(i+1)*(pi()/100));
+          }*/
+          
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 

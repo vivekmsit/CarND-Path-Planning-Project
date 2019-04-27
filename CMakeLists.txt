@@ -12,6 +12,7 @@ set(sources
     src/Vehicle.cpp
     src/SFVehicleInfo.cpp
     src/PathPlanner.cpp
+    src/helpers.cpp
 )
 
 

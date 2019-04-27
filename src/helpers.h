@@ -9,6 +9,13 @@
 using std::string;
 using std::vector;
 
+typedef struct P{
+  P(){}
+  P(double x1, double y1): x(x1), y(y1){}
+  double x;
+  double y;
+} Point;
+
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
 //   else the empty string "" will be returned.

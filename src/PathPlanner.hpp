@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 
+#include "helpers.h"
 #include "Vehicle.hpp"
 #include "SFVehicleInfo.hpp"
 #include "Eigen-3.3/Eigen/Core"
@@ -19,7 +20,7 @@ public:
                 vector<double> map_waypoints_dx,
                 vector<double> map_waypoints_dy);
                 
-    std::vector<std::vector<double>> computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path);
+    std::vector<Point> computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path);
 private:
     vector<double> map_waypoints_x_;
     vector<double> map_waypoints_y_;

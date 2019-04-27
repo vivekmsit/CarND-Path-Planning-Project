@@ -122,15 +122,17 @@ int main() {
            *   sequentially every .02 seconds
            */
           
-          std::vector<Point> path = pp.computePath(vehicle, sensorFusion, previous_path);
+          std::vector<Eigen::VectorXd> path = pp.computePath(vehicle, sensorFusion, previous_path);
           
-          for (int i = 0; i < 50; i++) {
+          /*for (int i = 0; i < 50; i++) {
             next_x_vals.push_back(path[i].x);
             next_y_vals.push_back(path[i].y);
-          }
+          }*/
           
-          // TEST CODE 2
-          /**/
+          for (auto &obj: path) {
+            next_x_vals.push_back(obj[0]);
+            next_y_vals.push_back(obj[1]);
+          }
           
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;

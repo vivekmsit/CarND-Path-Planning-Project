@@ -12,10 +12,33 @@ PathPlanner::PathPlanner(vector<double> map_waypoints_x,
                                                           map_waypoints_dy_(map_waypoints_dy) {
 }
 
-std::vector<Point> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path) {
+/*std::vector<Point> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path) {
   std::vector<Point> path;
+  double dist_inc = 0.5;
+  int path_size = previous_path.size();
+  std::cout<<"size of previous path is: " << path_size << std::endl;
+  std::cout<<"current x position is: " << vehicle.x_ << " and y position is: " << vehicle.y_ << std::endl;
+  
+  if (path_size != 0) {
+    double first_x = previous_path[0][0];
+    double first_y = previous_path[0][1];
+    double last_x = previous_path[path_size-1][0];
+    double last_y = previous_path[path_size-1][1];
+    std::cout<<"first x position is: " << first_x << " and first y position is: " << first_y << std::endl;
+    std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl << std::endl;
+  }
+  
+  for (auto &obj: previous_path) {
+   path.push_back(Point(obj[0], obj[1]));
+  }
+  for (int i =0; i<50 - path_size; i++) {
+    double next_s = vehicle.s_ + (i+1)*dist_inc;
+    double next_d = 6;
+    vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+    path.push_back(Point(XY[0], XY[1]));
+  }
   return path;
-}
+}*/
 
 /*std::vector<Point> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path) {
   std::vector<Point> path;
@@ -50,14 +73,35 @@ std::vector<Point> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleIn
 }*/
 
 
-/*std::vector<Point> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path) {
-  std::vector<Point> path;
+std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path) {
+  std::vector<Eigen::VectorXd> path;
   double dist_inc = 0.5;
+  
+  int path_size = previous_path.size();
+  std::cout<<"size of previous path is: " << path_size << std::endl;
+  std::cout<<"current x position is: " << vehicle.x_ << " and y position is: " << vehicle.y_ << std::endl;
+  
+  if (path_size != 0) {
+    double first_x = previous_path[0][0];
+    double first_y = previous_path[0][1];
+    double last_x = previous_path[path_size-1][0];
+    double last_y = previous_path[path_size-1][1];
+    std::cout<<"first x position is: " << first_x << " and first y position is: " << first_y << std::endl;
+    std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl << std::endl;
+  }
+  
+  if (path_size >= 10) {
+   return previous_path;
+  }
+  
   for (int i =0; i<50; i++) {
     double next_s = vehicle.s_ + (i+1)*dist_inc;
     double next_d = 6;
     vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
-    path.push_back(Point(XY[0], XY[1]));
+    Eigen::VectorXd point(2);
+    point[0] = XY[0];
+    point[1] = XY[1];
+    path.push_back(point);
   }
   return path;
-}*/
+}

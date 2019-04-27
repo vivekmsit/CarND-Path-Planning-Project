@@ -20,7 +20,7 @@ public:
                 vector<double> map_waypoints_dx,
                 vector<double> map_waypoints_dy);
                 
-    std::vector<Point> computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path);
+    std::vector<Eigen::VectorXd> computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path);
 private:
     vector<double> map_waypoints_x_;
     vector<double> map_waypoints_y_;

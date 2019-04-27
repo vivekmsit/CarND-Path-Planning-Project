@@ -7,13 +7,13 @@ using namespace std;
 
 class Vehicle {
 public:
-    Vehicle(int x, int y, int s, int d, int yaw, int speed);
-    int x_;
-    int y_;
-    int s_;
-    int d_;
-    int yaw_;
-    int speed_;
+    Vehicle(double x, double y, double s, double d, double yaw, double speed);
+    double x_;
+    double y_;
+    double s_;
+    double d_;
+    double yaw_;
+    double speed_;
 };
 
 #endif // VEHICLE_HPP

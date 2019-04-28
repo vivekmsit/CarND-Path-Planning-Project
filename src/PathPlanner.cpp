@@ -81,27 +81,49 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
   std::cout<<"size of previous path is: " << path_size << std::endl;
   std::cout<<"current x position is: " << vehicle.x_ << " and y position is: " << vehicle.y_ << std::endl;
   
+  double first_x;
+  double first_y;
+  double last_x;
+  double last_y;
+  
   if (path_size != 0) {
-    double first_x = previous_path[0][0];
-    double first_y = previous_path[0][1];
-    double last_x = previous_path[path_size-1][0];
-    double last_y = previous_path[path_size-1][1];
+    first_x = previous_path[0][0];
+    first_y = previous_path[0][1];
+    last_x = previous_path[path_size-1][0];
+    last_y = previous_path[path_size-1][1];
     std::cout<<"first x position is: " << first_x << " and first y position is: " << first_y << std::endl;
     std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl << std::endl;
+  } else {
+    last_x = vehicle.x_;
+    last_y = vehicle.y_;
   }
   
-  if (path_size >= 10) {
+  for (auto &obj: previous_path) {
+    Eigen::VectorXd point(2);
+    point[0] = obj[0];
+    point[1] = obj[1];
+    path.push_back(point);
+  }
+  
+  /*if (path_size >= 10) {
    return previous_path;
-  }
+  }*/
   
-  for (int i =0; i<50; i++) {
-    double next_s = vehicle.s_ + (i+1)*dist_inc;
+  for (int i =0; i<50 - path_size; i++) {
+    double next_s = last_x + (i+1)*dist_inc;
     double next_d = 6;
     vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
     Eigen::VectorXd point(2);
     point[0] = XY[0];
     point[1] = XY[1];
     path.push_back(point);
+    std::cout<<"new point x value is: " << point[0] << " and y value is: " << point[1] << std::endl;
   }
+  
+  int final_size = path.size();
+  auto obj = path.back();
+  std::cout<<"final path size is: " << final_size << std::endl;
+  std::cout<<"last co-ordinates of new path are: x: " << obj[0];
+  std::cout<<" and y: " << obj[1] << std::endl;
   return path;
 }

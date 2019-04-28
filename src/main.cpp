@@ -84,7 +84,7 @@ int main() {
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
           // Previous path's end s and d values 
-          double end_path_s = j[1]["end_path_s"];
+          double end_path_s= j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
 
           // Sensor Fusion Data, a list of all other cars on the same side
@@ -122,7 +122,7 @@ int main() {
            *   sequentially every .02 seconds
            */
           
-          std::vector<Eigen::VectorXd> path = pp.computePath(vehicle, sensorFusion, previous_path);
+          std::vector<Eigen::VectorXd> path = pp.computePath(vehicle, sensorFusion, previous_path, end_path_s, end_path_d);
           
           /*for (int i = 0; i < 50; i++) {
             next_x_vals.push_back(path[i].x);

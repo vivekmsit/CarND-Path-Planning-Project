@@ -20,13 +20,15 @@ public:
                 vector<double> map_waypoints_dx,
                 vector<double> map_waypoints_dy);
                 
-    std::vector<Eigen::VectorXd> computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path);
+    std::vector<Eigen::VectorXd> computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d);
 private:
     vector<double> map_waypoints_x_;
     vector<double> map_waypoints_y_;
     vector<double> map_waypoints_s_;
     vector<double> map_waypoints_dx_;
     vector<double> map_waypoints_dy_;
+    
+    std::vector<Eigen::VectorXd> previous_path_;
 };
 
 #endif // PATHPLANNER_HPP

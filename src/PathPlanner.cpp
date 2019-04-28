@@ -73,13 +73,13 @@ PathPlanner::PathPlanner(vector<double> map_waypoints_x,
 }*/
 
 
-std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path) {
+std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d) {
   std::vector<Eigen::VectorXd> path;
   double dist_inc = 0.5;
-  
+  vehicle.print();
   int path_size = previous_path.size();
   std::cout<<"size of previous path is: " << path_size << std::endl;
-  std::cout<<"current x position is: " << vehicle.x_ << " and y position is: " << vehicle.y_ << std::endl;
+  std::cout<<"end_path_s is: " << end_path_s << ", end_path_d: " << end_path_d << std::endl;
   
   double first_x;
   double first_y;
@@ -92,10 +92,12 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
     last_x = previous_path[path_size-1][0];
     last_y = previous_path[path_size-1][1];
     std::cout<<"first x position is: " << first_x << " and first y position is: " << first_y << std::endl;
-    std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl << std::endl;
+    std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl;
   } else {
     last_x = vehicle.x_;
     last_y = vehicle.y_;
+    end_path_s = vehicle.s_;
+    end_path_d = vehicle.d_;
   }
   
   for (auto &obj: previous_path) {
@@ -109,9 +111,15 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
    return previous_path;
   }*/
   
+  /*if (vehicle.speed_ == 0) {
+    dist_inc = (24/1000)*20;
+  } else {
+    dist_inc = (vehicle.speed_/1000)*20;
+  }*/
+  
   for (int i =0; i<50 - path_size; i++) {
-    double next_s = last_x + (i+1)*dist_inc;
-    double next_d = 6;
+    double next_s = end_path_s + (i+1)*dist_inc;
+    double next_d = end_path_d;
     vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
     Eigen::VectorXd point(2);
     point[0] = XY[0];
@@ -125,5 +133,8 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
   std::cout<<"final path size is: " << final_size << std::endl;
   std::cout<<"last co-ordinates of new path are: x: " << obj[0];
   std::cout<<" and y: " << obj[1] << std::endl;
+  std::cout<<std::endl;
+  
+  previous_path_ = path;
   return path;
 }

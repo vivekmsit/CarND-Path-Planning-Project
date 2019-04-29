@@ -25,7 +25,7 @@ public:
 private:
     double getLane(double d_value);
     double getRoundOffD(double d_value);
-    bool getNextVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, SFVehicleInfo &sFVehicle);
+    bool getClosestVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, SFVehicleInfo &sFVehicle, double lane, bool front);
     
     vector<double> map_waypoints_x_;
     vector<double> map_waypoints_y_;

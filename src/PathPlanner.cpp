@@ -1,5 +1,6 @@
 #include "PathPlanner.hpp"
 #include <iostream>
+#include <cstdlib>
 
 PathPlanner::PathPlanner(vector<double> map_waypoints_x,
                         vector<double> map_waypoints_y,
@@ -119,7 +120,8 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
   
   SFVehicleInfo nextSF;
   double laneChangeRequired = false;
-  double found = getNextVehicle(vehicle, sfInfo, nextSF);
+  // get closest vehicle in front of the vehicle in current lane
+  double found = getClosestVehicle(vehicle, sfInfo, nextSF, getLane(vehicle.d_), true);
   if (found) {
     double distance = nextSF.s_ - vehicle.s_;
     if (distance > 50) {
@@ -182,13 +184,12 @@ double PathPlanner::getRoundOffD(double d_value) {
   return roundedDValue;
 }
 
-bool PathPlanner::getNextVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, SFVehicleInfo &sFVehicle) {
+bool PathPlanner::getClosestVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, SFVehicleInfo &sFVehicle, double lane, bool front) {
   bool found = false;
   vector<SFVehicleInfo> currentLaneVehicles;
-  double vehicle_lane = getLane(vehicle.d_);
   for (auto &sFObj: sfInfo) {
     sFObj.lane_ = getLane(sFObj.d_);
-    if (sFObj.lane_ == vehicle_lane) {
+    if (sFObj.lane_ == lane) {
       currentLaneVehicles.push_back(sFObj);
     }
   }
@@ -198,11 +199,20 @@ bool PathPlanner::getNextVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, 
   double minDistance = std::numeric_limits<double>::max();
   for (auto &obj: currentLaneVehicles) {
     double diff = obj.s_ - vehicle.s_;
-    if ((diff > 0) && (diff < minDistance)) {
-      minDistance =  diff;
-      sFVehicle = obj;
+    double modDiff = abs(diff);
+    if (front) {
+      if ((diff > 0) && (modDiff < minDistance)) {
+        minDistance = modDiff;
+        sFVehicle = obj;
+        found = true;
+      }
+    } else {
+      if ((diff <= 0) && (modDiff < minDistance)) {
+        minDistance = modDiff;
+        sFVehicle = obj;
+        found = true;
+      }
     }
-    found = true;
   }
   return found;
 }

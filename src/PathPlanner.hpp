@@ -21,7 +21,12 @@ public:
                 vector<double> map_waypoints_dy);
                 
     std::vector<Eigen::VectorXd> computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d);
+
 private:
+    double getLane(double d_value);
+    double getRoundOffD(double d_value);
+    bool getNextVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, SFVehicleInfo &sFVehicle);
+    
     vector<double> map_waypoints_x_;
     vector<double> map_waypoints_y_;
     vector<double> map_waypoints_s_;

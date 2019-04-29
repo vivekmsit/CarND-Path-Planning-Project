@@ -117,9 +117,28 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
     dist_inc = (vehicle.speed_/1000)*20;
   }*/
   
+  SFVehicleInfo nextSF;
+  double laneChangeRequired = false;
+  double found = getNextVehicle(vehicle, sfInfo, nextSF);
+  if (found) {
+    double distance = nextSF.s_ - vehicle.s_;
+    if (distance > 50) {
+      // continue in same lane
+    } else {
+      // either stop or reduce speed or change lane
+      laneChangeRequired = true;
+    }
+  } else {
+      // continue in same lane with good speed
+  }
+  
+  if (laneChangeRequired) {
+    dist_inc = 0;
+  }
+  
+  double next_d = getRoundOffD(end_path_d);
   for (int i =0; i<50 - path_size; i++) {
     double next_s = end_path_s + (i+1)*dist_inc;
-    double next_d = end_path_d;
     vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
     Eigen::VectorXd point(2);
     point[0] = XY[0];
@@ -137,4 +156,53 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
   
   previous_path_ = path;
   return path;
+}
+
+double PathPlanner::getLane(double d_value) {
+  double lane = 0;
+  if (d_value >= 0 && d_value <4) {
+    lane = 0;
+  } else if (d_value >= 4 && d_value < 8) {
+   lane = 1;
+  } else {
+   lane = 2;
+  }
+  return lane;
+}
+
+double PathPlanner::getRoundOffD(double d_value) {
+  double roundedDValue = 0;
+  if (d_value >= 0 && d_value <4) {
+    roundedDValue = 2;
+  } else if (d_value >= 4 && d_value < 8) {
+   roundedDValue = 6;
+  } else {
+   roundedDValue = 10;
+  }
+  return roundedDValue;
+}
+
+bool PathPlanner::getNextVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, SFVehicleInfo &sFVehicle) {
+  bool found = false;
+  vector<SFVehicleInfo> currentLaneVehicles;
+  double vehicle_lane = getLane(vehicle.d_);
+  for (auto &sFObj: sfInfo) {
+    sFObj.lane_ = getLane(sFObj.d_);
+    if (sFObj.lane_ == vehicle_lane) {
+      currentLaneVehicles.push_back(sFObj);
+    }
+  }
+  if (currentLaneVehicles.size() == 0) {
+    return found;
+  }
+  double minDistance = std::numeric_limits<double>::max();
+  for (auto &obj: currentLaneVehicles) {
+    double diff = obj.s_ - vehicle.s_;
+    if ((diff > 0) && (diff < minDistance)) {
+      minDistance =  diff;
+      sFVehicle = obj;
+    }
+    found = true;
+  }
+  return found;
 }

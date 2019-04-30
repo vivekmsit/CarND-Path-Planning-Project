@@ -73,14 +73,21 @@ PathPlanner::PathPlanner(vector<double> map_waypoints_x,
   return path;
 }*/
 
-
-std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d) {
+std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d) {
+  
+  // store data into private member variables
+  vehicle_ = vehicle;
+  sensorFusionList_ = sfInfo;
+  previousPath_ = previous_path;
+  end_path_s_ = end_path_s;
+  end_path_d_ = end_path_d;
+  
   std::vector<Eigen::VectorXd> path;
   double dist_inc = 0.5;
-  vehicle.print();
-  int path_size = previous_path.size();
+  vehicle_.print();
+  int path_size = previousPath_.size();
   std::cout<<"size of previous path is: " << path_size << std::endl;
-  std::cout<<"end_path_s is: " << end_path_s << ", end_path_d: " << end_path_d << std::endl;
+  std::cout<<"end_path_s is: " << end_path_s_ << ", end_path_d: " << end_path_d_ << std::endl;
   
   double first_x;
   double first_y;
@@ -88,10 +95,10 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
   double last_y;
   
   if (path_size != 0) {
-    first_x = previous_path[0][0];
-    first_y = previous_path[0][1];
-    last_x = previous_path[path_size-1][0];
-    last_y = previous_path[path_size-1][1];
+    first_x = previousPath_[0][0];
+    first_y = previousPath_[0][1];
+    last_x = previousPath_[path_size-1][0];
+    last_y = previousPath_[path_size-1][1];
     std::cout<<"first x position is: " << first_x << " and first y position is: " << first_y << std::endl;
     std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl;
   } else {
@@ -101,7 +108,7 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
     end_path_d = vehicle.d_;
   }
   
-  for (auto &obj: previous_path) {
+  for (auto &obj: previousPath_) {
     Eigen::VectorXd point(2);
     point[0] = obj[0];
     point[1] = obj[1];
@@ -118,23 +125,8 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
     dist_inc = (vehicle.speed_/1000)*20;
   }*/
   
-  SFVehicleInfo nextSF;
-  double laneChangeRequired = false;
-  // get closest vehicle in front of the vehicle in current lane
-  double found = getClosestVehicle(vehicle, sfInfo, nextSF, getLane(vehicle.d_), true);
-  if (found) {
-    double distance = nextSF.s_ - vehicle.s_;
-    if (distance > 50) {
-      // continue in same lane
-    } else {
-      // either stop or reduce speed or change lane
-      laneChangeRequired = true;
-    }
-  } else {
-      // continue in same lane with good speed
-  }
-  
-  if (laneChangeRequired) {
+  double lChangeRequired = laneChangeRequired();
+  if (lChangeRequired) {
     dist_inc = 0;
   }
   
@@ -156,7 +148,7 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle &vehicle, vector<S
   std::cout<<" and y: " << obj[1] << std::endl;
   std::cout<<std::endl;
   
-  previous_path_ = path;
+  //previous_path_ = path;
   return path;
 }
 
@@ -172,6 +164,27 @@ double PathPlanner::getLane(double d_value) {
   return lane;
 }
 
+bool PathPlanner::laneChangeRequired() {
+  SFVehicleInfo nextSF;
+  bool lChangeRequired = false;
+  double currentLane = getLane(vehicle_.d_);
+  // get closest vehicle in front of the vehicle in current lane
+  double found = getClosestVehicle(nextSF, currentLane, true);
+  if (found) {
+    double distance = nextSF.s_ - vehicle_.s_;
+    //double speed_diff = nextSF.speed_ - vehicle_.speed_;
+    if (distance > 50) { // or if speed of next vehicle is less 
+      // continue in same lane
+    } else {
+      // either stop or reduce speed or change lane
+      lChangeRequired = true;
+    }
+  } else {
+      // continue in same lane with good speed
+  }
+  return lChangeRequired;
+}
+
 double PathPlanner::getRoundOffD(double d_value) {
   double roundedDValue = 0;
   if (d_value >= 0 && d_value <4) {
@@ -184,10 +197,10 @@ double PathPlanner::getRoundOffD(double d_value) {
   return roundedDValue;
 }
 
-bool PathPlanner::getClosestVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, SFVehicleInfo &sFVehicle, double lane, bool front) {
+bool PathPlanner::getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front) {
   bool found = false;
   vector<SFVehicleInfo> currentLaneVehicles;
-  for (auto &sFObj: sfInfo) {
+  for (auto &sFObj: sensorFusionList_) {
     sFObj.lane_ = getLane(sFObj.d_);
     if (sFObj.lane_ == lane) {
       currentLaneVehicles.push_back(sFObj);
@@ -198,7 +211,7 @@ bool PathPlanner::getClosestVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInf
   }
   double minDistance = std::numeric_limits<double>::max();
   for (auto &obj: currentLaneVehicles) {
-    double diff = obj.s_ - vehicle.s_;
+    double diff = obj.s_ - vehicle_.s_;
     double modDiff = abs(diff);
     if (front) {
       if ((diff > 0) && (modDiff < minDistance)) {
@@ -215,4 +228,22 @@ bool PathPlanner::getClosestVehicle(Vehicle vehicle, vector<SFVehicleInfo> sfInf
     }
   }
   return found;
+}
+
+bool PathPlanner::getLaneChangeInfo(SFVehicleInfo &sfObj, double &targetLane){
+  bool laneFound = false;
+  double currentLane = getLane(vehicle_.d_);
+  if (currentLane == 0) { // For left lane vehicle, middle lane is the only option
+    SFVehicleInfo nextSF;
+    double localFound = getClosestVehicle(nextSF, 1, true);
+  } else if (currentLane == 1) { // for middle lane vehicle, left and right lane both are options
+    SFVehicleInfo nextLeftSF;
+    SFVehicleInfo nextrightSF;
+    double leftFound = getClosestVehicle(nextLeftSF, 0, true);
+    double rightFound = getClosestVehicle(nextrightSF, 2, true);
+  } else { // For right lane vehicle, middle lane is the only option
+    SFVehicleInfo nextSF;
+    double localFound = getClosestVehicle(nextSF, 1, true);
+  }
+  return laneFound;
 }

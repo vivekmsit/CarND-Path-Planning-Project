@@ -152,3 +152,27 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
 
   return {x,y};
 }
+
+double getLane(double d_value) {
+  double lane = 0;
+  if (d_value >= 0 && d_value <4) {
+    lane = 0;
+  } else if (d_value >= 4 && d_value < 8) {
+   lane = 1;
+  } else {
+   lane = 2;
+  }
+  return lane;
+}
+
+double getRoundOffD(double d_value) {
+  double roundedDValue = 0;
+  if (d_value >= 0 && d_value <4) {
+    roundedDValue = 2;
+  } else if (d_value >= 4 && d_value < 8) {
+   roundedDValue = 6;
+  } else {
+   roundedDValue = 10;
+  }
+  return roundedDValue;
+}

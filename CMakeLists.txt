@@ -13,6 +13,7 @@ set(sources
     src/SFVehicleInfo.cpp
     src/PathPlanner.cpp
     src/helpers.cpp
+    src/StateMachine.cpp
 )
 
 

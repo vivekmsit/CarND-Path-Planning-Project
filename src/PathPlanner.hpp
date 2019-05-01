@@ -23,11 +23,9 @@ public:
     std::vector<Eigen::VectorXd> computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d);
 
 private:
-    double getLane(double d_value);
-    double getRoundOffD(double d_value);
-    bool laneChangeRequired();
-    bool getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front);
-    bool getLaneChangeInfo(SFVehicleInfo &sfObj, double &targetLane);
+    //bool laneChangeRequired();
+    //bool getLaneChangeInfo(SFVehicleInfo &sfObj, double &targetLane, bool &vehicleToFollow);
+    double getLaneChangePath(const SFVehicleInfo &sfObj, const double &targetLane, const bool &vehicleToFollow);
     
     Vehicle vehicle_;
     vector<SFVehicleInfo> sensorFusionList_;

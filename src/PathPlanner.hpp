@@ -7,6 +7,8 @@
 #include "helpers.h"
 #include "Vehicle.hpp"
 #include "SFVehicleInfo.hpp"
+#include "StateMachine.hpp"
+
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 
@@ -26,6 +28,13 @@ private:
     //bool laneChangeRequired();
     //bool getLaneChangeInfo(SFVehicleInfo &sfObj, double &targetLane, bool &vehicleToFollow);
     double getLaneChangePath(const SFVehicleInfo &sfObj, const double &targetLane, const bool &vehicleToFollow);
+    
+    double getStateCost(State state, StateInfo &stInfo, bool &stInfoAvailable);
+    double getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable);
+    double getRLCStateCost(StateInfo &stInfo, bool &stInfoAvailable);
+    double getCLStateCost(StateInfo &stInfo, bool &stInfoAvailable);
+  
+    bool getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front);
     
     Vehicle vehicle_;
     vector<SFVehicleInfo> sensorFusionList_;

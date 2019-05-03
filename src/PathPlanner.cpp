@@ -3,6 +3,14 @@
 #include <cstdlib>
 #include "helpers.h"
 
+#define DISTANCE_THRESHOLD 10
+#define PATH_DURATION 2
+
+#define CURRENT_NEXT_DIST_THRESHOLD 5
+#define FUTURE_NEXT_DIST_THRESHOLD 5
+#define CURRENT_PREV_DIST_THRESHOLD 5
+#define FUTURE_PREV_DIST_THRESHOLD 5
+
 PathPlanner::PathPlanner(vector<double> map_waypoints_x,
                         vector<double> map_waypoints_y,
                         vector<double> map_waypoints_s,
@@ -209,4 +217,149 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
 
 double PathPlanner::getLaneChangePath(const SFVehicleInfo &sfObj, const double &targetLane, const bool &vehicleToFollow) {
   return 0;
+}
+
+double PathPlanner::getStateCost(State state, StateInfo &stInfo, bool &stInfoAvailable) {
+  double cost = std::numeric_limits<double>::max();;
+  switch(state) {
+    case State::CURRENT:
+      cost = getCLStateCost(stInfo, stInfoAvailable);
+      break;
+    case State::LEFT_CHANGE:
+      cost = getLLCStateCost(stInfo, stInfoAvailable);
+      break;
+    case State::RIGHT_CHANGE:
+      cost = getRLCStateCost(stInfo, stInfoAvailable);
+      break;
+    default:
+      break;
+  }
+  return cost;
+}
+
+double PathPlanner::getCLStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
+  double cost = 0;
+  SFVehicleInfo nextSF;
+  double currentLane = getLane(vehicle_.d_);
+  double nextFound = getClosestVehicle(nextSF, currentLane, true);
+  if (nextFound) {
+    // check if we can get too close to the car in the lane
+    double vehicleFuturePosX = vehicle_.vx_*PATH_DURATION;
+    double vehicleFuturePosY = vehicle_.vy_*PATH_DURATION;
+    double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
+    double nextSFFuturePosY = nextSF.vy_*PATH_DURATION;
+    
+    double nextSFCurrentDist = distance(vehicle_.x_, vehicle_.y_, nextSF.x_, nextSF.y_);
+    double nextSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, nextSFFuturePosX, nextSFFuturePosY);
+    
+    if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD &&
+        nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
+      cost += 0.1;
+      // calculate future location here
+      stInfo.d_ = vehicle_.d_;
+      stInfo.s_ = vehicle_.s_*PATH_DURATION;
+      stInfo.speed_ = vehicle_.speed_;
+    } else if (nextSFCurrentDist < DISTANCE_THRESHOLD) {
+      // current distance gap is low and thus cost is very high
+      cost += 0.8;
+    } else if (nextSFCurrentDist < DISTANCE_THRESHOLD) {
+      // future distance gap is low and thus cost is high
+      cost += 0.6;
+    }
+  } else {
+    cost = 0;
+  }
+  return cost;
+}
+
+double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
+  double cost = 0;
+  SFVehicleInfo nextSF;
+  SFVehicleInfo prevSF;
+  double currentLane = getLane(vehicle_.d_);
+  double nextFound = getClosestVehicle(nextSF, currentLane - 1, true);
+  double prevFound = getClosestVehicle(prevSF, currentLane - 1, false);
+  double vehicleFuturePosX = vehicle_.vx_*PATH_DURATION;
+  double vehicleFuturePosY = vehicle_.vy_*PATH_DURATION;
+  
+  if (nextFound && prevFound) {
+    double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
+    double nextSFFuturePosY = nextSF.vy_*PATH_DURATION;
+    double prevSFFuturePosX = prevSF.vx_*PATH_DURATION;
+    double prevSFFuturePosY = prevSF.vy_*PATH_DURATION;
+    
+    double nextSFCurrentDist = distance(vehicle_.x_, vehicle_.y_, nextSF.x_, nextSF.y_);
+    double nextSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, nextSFFuturePosX, nextSFFuturePosY);
+    double previousSFCurrentDist = distance(vehicle_.x_, vehicle_.y_, prevSF.x_, prevSF.y_);
+    double prevSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, prevSFFuturePosX, prevSFFuturePosX);
+    
+    // check if we can get too close to the car in the lane
+    if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD &&
+        nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD &&
+        previousSFCurrentDist > CURRENT_PREV_DIST_THRESHOLD &&
+        prevSFFutureDist > FUTURE_PREV_DIST_THRESHOLD) {
+      cost += 0.1;
+      // calculate future location here
+    } else if (nextFound) {
+      
+      cost += 0.6;
+    } else if (prevFound) {
+      
+      cost += 0.6;
+    } else {
+      
+      cost += 0.1;
+    }
+  } else {
+    // no need to increase cost here
+  }
+  return cost;
+}
+
+
+
+double PathPlanner::getRLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
+  SFVehicleInfo nextSF;
+  double cost = 0;
+  double currentLane = getLane(vehicle_.d_);
+  double localFound = getClosestVehicle(nextSF, currentLane, true);
+  if (localFound) {
+    
+  } else {
+    cost = 0.15;
+  }
+  return cost;
+}
+
+bool PathPlanner::getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front) {
+  bool found = false;
+  vector<SFVehicleInfo> currentLaneVehicles;
+  for (auto &sFObj: sensorFusionList_) {
+    sFObj.lane_ = getLane(sFObj.d_);
+    if (sFObj.lane_ == lane) {
+      currentLaneVehicles.push_back(sFObj);
+    }
+  }
+  if (currentLaneVehicles.size() == 0) {
+    return found;
+  }
+  double minDistance = std::numeric_limits<double>::max();
+  for (auto &obj: currentLaneVehicles) {
+    double diff = obj.s_ - vehicle_.s_;
+    double modDiff;// = abs(diff);
+    if (front) {
+      if ((diff > 0) && (modDiff < minDistance)) {
+        minDistance = modDiff;
+        sFVehicle = obj;
+        found = true;
+      }
+    } else {
+      if ((diff <= 0) && (modDiff < minDistance)) {
+        minDistance = modDiff;
+        sFVehicle = obj;
+        found = true;
+      }
+    }
+  }
+  return found;
 }

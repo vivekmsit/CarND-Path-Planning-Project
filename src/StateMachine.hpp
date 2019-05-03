@@ -26,20 +26,9 @@ typedef struct {
 
 class StateMachine {
 public:
-  StateMachine(Vehicle vehicle, vector<SFVehicleInfo> sfInfo);
+  StateMachine();
   
   vector<State> getNextStates(double lane);
-  double getStateCost(State state, StateInfo &stInfo);
-  
-private:
-  double getLLCStateCost(StateInfo &stInfo);
-  double getRLCStateCost(StateInfo &stInfo);
-  double getCLStateCost(StateInfo &stInfo);
-  
-  bool getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front);
-  
-  Vehicle vehicle_;
-  vector<SFVehicleInfo> sensorFusionList_;
 };
 
 #endif // STATE_MACHINE_HPP

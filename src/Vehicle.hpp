@@ -16,6 +16,8 @@ public:
     double d_;
     double yaw_;
     double speed_;
+    double vx_;
+    double vy_;
 };
 
 #endif // VEHICLE_HPP

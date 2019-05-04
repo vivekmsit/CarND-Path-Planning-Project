@@ -30,9 +30,8 @@ private:
     double getLaneChangePath(const SFVehicleInfo &sfObj, const double &targetLane, const bool &vehicleToFollow);
     
     double getStateCost(State state, StateInfo &stInfo, bool &stInfoAvailable);
-    double getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable);
-    double getRLCStateCost(StateInfo &stInfo, bool &stInfoAvailable);
     double getCLStateCost(StateInfo &stInfo, bool &stInfoAvailable);
+    double getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, const State state);
   
     bool getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front);
     

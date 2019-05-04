@@ -226,10 +226,10 @@ double PathPlanner::getStateCost(State state, StateInfo &stInfo, bool &stInfoAva
       cost = getCLStateCost(stInfo, stInfoAvailable);
       break;
     case State::LEFT_CHANGE:
-      cost = getLLCStateCost(stInfo, stInfoAvailable);
+      cost = getLaneChangeCost(stInfo, stInfoAvailable, state);
       break;
     case State::RIGHT_CHANGE:
-      cost = getRLCStateCost(stInfo, stInfoAvailable);
+      cost = getLaneChangeCost(stInfo, stInfoAvailable, state);
       break;
     default:
       break;
@@ -273,18 +273,37 @@ double PathPlanner::getCLStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   return cost;
 }
 
-double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
+double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, const State state) {
   double cost = 0;
   SFVehicleInfo nextSF;
   SFVehicleInfo prevSF;
+  stInfoAvailable = false;
+  double nextLane;
+  std::string laneName;
   double currentLane = getLane(vehicle_.d_);
-  double nextFound = getClosestVehicle(nextSF, currentLane - 1, true);
-  double prevFound = getClosestVehicle(prevSF, currentLane - 1, false);
+  if (state == State::LEFT_CHANGE) {
+    nextLane = currentLane -1;
+    laneName = "left";
+  } else if (state == State::RIGHT_CHANGE) {
+    nextLane = currentLane +1;
+    laneName = "right";
+  } else {
+    // Invalid state
+    cost = 0.9;
+    return cost;
+  }
+  double nextFound = getClosestVehicle(nextSF, nextLane, true);
+  double prevFound = getClosestVehicle(prevSF, nextLane, false);
   
   // calculation of next x,y coordinates of vehicle in left lane after 2 seconds
   double angle = 60; // in degrees
   double next_s = vehicle_.s_ + 4*tan(rad2deg(angle));
-  double next_d = 2; // mid of first lane
+  double next_d;
+  if (state == State::LEFT_CHANGE) {
+    next_d = 2; // mid of left lane
+  } else {
+    next_d = 6; // mid of right lane
+  }
   vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
   double vehicleFuturePosX = XY[0];
   double vehicleFuturePosY = XY[1];
@@ -295,6 +314,7 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   double vehicleCurPosY = XY[1];
   
   if (nextFound && prevFound) {
+    std::cout<<"In the " << laneName << " lane, vehicle is in front as well as in back"<<std::endl;
     double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
     double nextSFFuturePosY = nextSF.vy_*PATH_DURATION;
     double prevSFFuturePosX = prevSF.vx_*PATH_DURATION;
@@ -305,7 +325,7 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
     double previousSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, prevSF.x_, prevSF.y_);
     double prevSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, prevSFFuturePosX, prevSFFuturePosX);
     
-    // check if we can get too close to the car in the lane
+    // check if we can go to a comfortable distance between two cars
     if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD &&
         nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD &&
         previousSFCurrentDist > CURRENT_PREV_DIST_THRESHOLD &&
@@ -313,8 +333,15 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
       cost += 0.1;
       stInfoAvailable = true;
       // calculate future location here
+      stInfo.x_ = vehicleFuturePosX;
+      stInfo.y_ = vehicleFuturePosY;
+      double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
+      stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
+    } else {
+      cost += 0.6;
     }
   } else if (nextFound) {
+    std::cout<<"In the " << laneName << " lane, vehicle is only in the front"<<std::endl;
     double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
     double nextSFFuturePosY = nextSF.vy_*PATH_DURATION;
   
@@ -325,15 +352,16 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
         nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
       cost += 0.1;
       stInfoAvailable = true;
-      // continue with same speed
       // calculate future location here
-      stInfo.d_ = vehicle_.d_;
-      stInfo.s_ = vehicle_.s_*PATH_DURATION;
-      stInfo.speed_ = vehicle_.speed_;
+      stInfo.x_ = vehicleFuturePosX;
+      stInfo.y_ = vehicleFuturePosY;
+      double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
+      stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
     } else {
         cost += 0.6;
     }
   } else if (prevFound) {
+    std::cout<<"In the " << laneName << " lane, vehicle is only in the back"<<std::endl;
     double prevSFFuturePosX = prevSF.vx_*PATH_DURATION;
     double prevSFFuturePosY = prevSF.vy_*PATH_DURATION;
     
@@ -345,28 +373,22 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
       cost += 0.1;
       stInfoAvailable = true;
       // calculate future location here
-      stInfo.d_ = vehicle_.d_;
-      stInfo.s_ = vehicle_.s_*PATH_DURATION;
-      stInfo.speed_ = vehicle_.speed_;
+      stInfo.x_ = vehicleFuturePosX;
+      stInfo.y_ = vehicleFuturePosY;
+      double nextVehicleVel = std::sqrt(prevSF.vx_*prevSF.vx_ + prevSF.vy_*prevSF.vy_);
+      stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
     } else {
         cost += 0.6;
     }
   } else {
     // No vehicle in the left lane nearby, so lane change can happen easily
+    std::cout<<"In the " << laneName << " lane, there are no vehicles"<<std::endl;
     cost += 0.1;
-  }
-  return cost;
-}
-
-double PathPlanner::getRLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
-  SFVehicleInfo nextSF;
-  double cost = 0;
-  double currentLane = getLane(vehicle_.d_);
-  double localFound = getClosestVehicle(nextSF, currentLane, true);
-  if (localFound) {
-    
-  } else {
-    cost = 0.15;
+    stInfoAvailable = true;
+    // calculate future location here
+    stInfo.x_ = vehicleFuturePosX;
+    stInfo.y_ = vehicleFuturePosY;
+    stInfo.speed_ = 24; // keep the speed as maximum speed within limits
   }
   return cost;
 }

@@ -255,6 +255,7 @@ double PathPlanner::getCLStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
     if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD &&
         nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
       cost += 0.1;
+      // continue with same speed
       // calculate future location here
       stInfo.d_ = vehicle_.d_;
       stInfo.s_ = vehicle_.s_*PATH_DURATION;
@@ -262,7 +263,7 @@ double PathPlanner::getCLStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
     } else if (nextSFCurrentDist < DISTANCE_THRESHOLD) {
       // current distance gap is low and thus cost is very high
       cost += 0.8;
-    } else if (nextSFCurrentDist < DISTANCE_THRESHOLD) {
+    } else if (nextSFFutureDist < DISTANCE_THRESHOLD) {
       // future distance gap is low and thus cost is high
       cost += 0.6;
     }
@@ -279,8 +280,19 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   double currentLane = getLane(vehicle_.d_);
   double nextFound = getClosestVehicle(nextSF, currentLane - 1, true);
   double prevFound = getClosestVehicle(prevSF, currentLane - 1, false);
-  double vehicleFuturePosX = vehicle_.vx_*PATH_DURATION;
-  double vehicleFuturePosY = vehicle_.vy_*PATH_DURATION;
+  
+  // calculation of next x,y coordinates of vehicle in left lane after 2 seconds
+  double angle = 60; // in degrees
+  double next_s = vehicle_.s_ + 4*tan(rad2deg(angle));
+  double next_d = 2; // mid of first lane
+  vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+  double vehicleFuturePosX = XY[0];
+  double vehicleFuturePosY = XY[1];
+  
+  // Calculate equivalent X,Y coordinates in left lane if vehicle would have been there.
+  XY = getXY(vehicle_.s_, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+  double vehicleCurPosX = XY[0];
+  double vehicleCurPosY = XY[1];
   
   if (nextFound && prevFound) {
     double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
@@ -288,9 +300,9 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
     double prevSFFuturePosX = prevSF.vx_*PATH_DURATION;
     double prevSFFuturePosY = prevSF.vy_*PATH_DURATION;
     
-    double nextSFCurrentDist = distance(vehicle_.x_, vehicle_.y_, nextSF.x_, nextSF.y_);
+    double nextSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, nextSF.x_, nextSF.y_);
     double nextSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, nextSFFuturePosX, nextSFFuturePosY);
-    double previousSFCurrentDist = distance(vehicle_.x_, vehicle_.y_, prevSF.x_, prevSF.y_);
+    double previousSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, prevSF.x_, prevSF.y_);
     double prevSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, prevSFFuturePosX, prevSFFuturePosX);
     
     // check if we can get too close to the car in the lane
@@ -299,24 +311,52 @@ double PathPlanner::getLLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
         previousSFCurrentDist > CURRENT_PREV_DIST_THRESHOLD &&
         prevSFFutureDist > FUTURE_PREV_DIST_THRESHOLD) {
       cost += 0.1;
+      stInfoAvailable = true;
       // calculate future location here
-    } else if (nextFound) {
-      
-      cost += 0.6;
-    } else if (prevFound) {
-      
-      cost += 0.6;
-    } else {
-      
+    }
+  } else if (nextFound) {
+    double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
+    double nextSFFuturePosY = nextSF.vy_*PATH_DURATION;
+  
+    double nextSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, nextSF.x_, nextSF.y_);
+    double nextSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, nextSFFuturePosX, nextSFFuturePosY);
+   
+    if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD &&
+        nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
       cost += 0.1;
+      stInfoAvailable = true;
+      // continue with same speed
+      // calculate future location here
+      stInfo.d_ = vehicle_.d_;
+      stInfo.s_ = vehicle_.s_*PATH_DURATION;
+      stInfo.speed_ = vehicle_.speed_;
+    } else {
+        cost += 0.6;
+    }
+  } else if (prevFound) {
+    double prevSFFuturePosX = prevSF.vx_*PATH_DURATION;
+    double prevSFFuturePosY = prevSF.vy_*PATH_DURATION;
+    
+    double previousSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, prevSF.x_, prevSF.y_);
+    double prevSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, prevSFFuturePosX, prevSFFuturePosX);
+    
+    if (previousSFCurrentDist > CURRENT_PREV_DIST_THRESHOLD &&
+        prevSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
+      cost += 0.1;
+      stInfoAvailable = true;
+      // calculate future location here
+      stInfo.d_ = vehicle_.d_;
+      stInfo.s_ = vehicle_.s_*PATH_DURATION;
+      stInfo.speed_ = vehicle_.speed_;
+    } else {
+        cost += 0.6;
     }
   } else {
-    // no need to increase cost here
+    // No vehicle in the left lane nearby, so lane change can happen easily
+    cost += 0.1;
   }
   return cost;
 }
-
-
 
 double PathPlanner::getRLCStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   SFVehicleInfo nextSF;

@@ -32,7 +32,7 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
   end_path_d_ = end_path_d;
   
   std::vector<Eigen::VectorXd> path;
-  double dist_inc = 0.5;
+  double dist_inc = 0.4;
   vehicle_.print();
   int path_size = previousPath_.size();
   std::cout<<"size of previous path is: " << path_size << std::endl;
@@ -64,30 +64,13 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
     path.push_back(point);
   }
   
-  /*if (path_size >= 10) {
-   return previous_path;
-  }*/
-  
-  /*if (vehicle.speed_ == 0) {
-    dist_inc = (24/1000)*20;
-  } else {
-    dist_inc = (vehicle.speed_/1000)*20;
-  }*/
-  
-  /*double lChangeRequired = laneChangeRequired();
-  if (lChangeRequired) {
-    dist_inc = 0;
-    SFVehicleInfo sfObj;
-    double targetLane;
-    bool vehicleToFollow = false;
-    bool laneFound = getLaneChangeInfo(sfObj, targetLane, vehicleToFollow);
-    if (laneFound) {
-      double path = getLaneChangePath(sfObj, targetLane, vehicleToFollow);
-    } else {
-      // stop the vehicle
-      dist_inc = 0;
-    }
-  }*/
+  vector<State> nextStates = stateMachine_.getNextStates(getLane(vehicle_.d_));
+  for (auto state: nextStates) {
+    StateInfo stInfo;
+    bool stInfoAvailable;
+    double stateCost = getStateCost(state, stInfo, stInfoAvailable);
+    std::cout<<"state cost is: " << stateCost << std::endl;
+  }
   
   double next_d = getRoundOffD(end_path_d);
   for (int i =0; i<50 - path_size; i++) {
@@ -106,114 +89,8 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
   std::cout<<"last co-ordinates of new path are: x: " << obj[0];
   std::cout<<" and y: " << obj[1] << std::endl;
   std::cout<<std::endl;
-  
-  //previous_path_ = path;
   return path;
 }
-
-/*bool PathPlanner::laneChangeRequired() {
-  SFVehicleInfo nextSF;
-  bool lChangeRequired = false;
-  double currentLane = getLane(vehicle_.d_);
-  // get closest vehicle in front of the vehicle in current lane
-  double found = getClosestVehicle(nextSF, currentLane, true);
-  if (found) {
-    double distance = nextSF.s_ - vehicle_.s_;
-    //double speed_diff = nextSF.speed_ - vehicle_.speed_;
-    if (distance > 50) { // or if speed of next vehicle is less 
-      // continue in same lane
-    } else {
-      // either stop or reduce speed or change lane
-      lChangeRequired = true;
-    }
-  } else {
-      // continue in same lane with good speed
-  }
-  return lChangeRequired;
-}*/
-
-
-/*bool PathPlanner::getLaneChangeInfo(SFVehicleInfo &sfObj, double &targetLane, bool &vehicleToFollow){
-  bool laneFound = false;
-  double minDiff = 10;
-  double currentLane = getLane(vehicle_.d_);
-  vehicleToFollow = false;
-  if (currentLane == 0) { // For left lane vehicle, middle lane is the only option
-    SFVehicleInfo nextSF;
-    double localFound = getClosestVehicle(nextSF, 1, true);
-    if (localFound) {
-      double diff = nextSF.s_ - vehicle_.s_;
-      if (diff > minDiff) {
-        sfObj = nextSF;
-        targetLane = 0;
-        laneFound = true;
-        vehicleToFollow = true;
-      }
-    }
-  } else if (currentLane == 1) { // for middle lane vehicle, left and right lane both are options
-    SFVehicleInfo nextLeftSF;
-    SFVehicleInfo nextrightSF;
-    double leftFound = getClosestVehicle(nextLeftSF, 0, true);
-    double rightFound = getClosestVehicle(nextrightSF, 2, true);
-    if (leftFound && rightFound) {
-      if (nextLeftSF.s_ > nextrightSF.s_) {
-        double diff = nextLeftSF.s_ - vehicle_.s_;
-        if (diff > minDiff) {
-          sfObj = nextLeftSF;
-          targetLane = 0;
-          laneFound = true;
-          vehicleToFollow = true;
-        }
-      } else {
-        double diff = nextrightSF.s_ - vehicle_.s_;
-        if (diff > minDiff) {
-          sfObj = nextrightSF;
-          targetLane = 2;
-          laneFound = true;
-          vehicleToFollow = true;
-        }
-      }
-    } else if (leftFound) {
-      double diff = nextLeftSF.s_ - vehicle_.s_;
-      if (diff > minDiff) {
-        sfObj = nextLeftSF;
-        targetLane = 0;
-        laneFound = true;
-        vehicleToFollow = true;
-      }
-    } else if (rightFound) {
-      double diff = nextrightSF.s_ - vehicle_.s_;
-      if (diff > minDiff) {
-        sfObj = nextrightSF;
-        targetLane = 2;
-        laneFound = true;
-        vehicleToFollow = true;
-      }
-    } else {
-      // Here we can switch to either left lane or right lane, we will choose right lane (2) here
-      sfObj = nextrightSF;
-      targetLane = 2;
-      laneFound = true;
-      vehicleToFollow = true;
-    }
-  } else { // For right lane vehicle, middle lane is the only option
-    SFVehicleInfo nextSF;
-    double localFound = getClosestVehicle(nextSF, 1, true);
-    if (localFound) {
-      double diff = nextSF.s_ - vehicle_.s_;
-      if (diff > minDiff) {
-        sfObj = nextSF;
-        targetLane = 1;
-        laneFound = true;
-        vehicleToFollow = true;
-      }
-    } else { // no vehicles on middle lane, so can easily change lane
-      targetLane = 1;
-      laneFound = true;
-    }
-  }
-  return laneFound;
-}*/
 
 double PathPlanner::getLaneChangePath(const SFVehicleInfo &sfObj, const double &targetLane, const bool &vehicleToFollow) {
   return 0;

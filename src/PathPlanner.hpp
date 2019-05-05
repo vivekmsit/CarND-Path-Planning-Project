@@ -25,8 +25,6 @@ public:
     std::vector<Eigen::VectorXd> computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d);
 
 private:
-    //bool laneChangeRequired();
-    //bool getLaneChangeInfo(SFVehicleInfo &sfObj, double &targetLane, bool &vehicleToFollow);
     double getLaneChangePath(const SFVehicleInfo &sfObj, const double &targetLane, const bool &vehicleToFollow);
     
     double getStateCost(State state, StateInfo &stInfo, bool &stInfoAvailable);
@@ -47,6 +45,8 @@ private:
     vector<double> map_waypoints_s_;
     vector<double> map_waypoints_dx_;
     vector<double> map_waypoints_dy_;
+    
+    StateMachine stateMachine_;
 };
 
 #endif // PATHPLANNER_HPP

@@ -3,6 +3,9 @@
 #include <cstdlib>
 #include "helpers.h"
 
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
 #define DISTANCE_THRESHOLD 10
 #define PATH_DURATION 2
 
@@ -64,12 +67,31 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
     path.push_back(point);
   }
   
+  State nextState;
+  StateInfo nextStateInfo;
+  bool nextStateAvailable = false;
+  double minCost = std::numeric_limits<double>::max();
   vector<State> nextStates = stateMachine_.getNextStates(getLane(vehicle_.d_));
   for (auto state: nextStates) {
     StateInfo stInfo;
     bool stInfoAvailable;
     double stateCost = getStateCost(state, stInfo, stInfoAvailable);
+    if (stInfoAvailable && stateCost <= 0.5) {
+      if (stateCost < minCost) {
+       minCost = stateCost;
+       nextStateInfo = stInfo;
+       nextStateAvailable = true;
+      }
+    }
     std::cout<<"state cost is: " << stateCost << std::endl;
+  }
+  
+  if (nextStateAvailable) {
+    vector<double> xValues;
+    vector<double> yValues;
+    bool status = getPathCoordinates(nextStateInfo, xValues, yValues);
+  } else {
+    // TODO
   }
   
   double next_d = getRoundOffD(end_path_d);
@@ -100,7 +122,7 @@ double PathPlanner::getStateCost(State state, StateInfo &stInfo, bool &stInfoAva
   double cost = std::numeric_limits<double>::max();;
   switch(state) {
     case State::CURRENT:
-      cost = getCLStateCost(stInfo, stInfoAvailable);
+      cost = getCurrentLaneStateCost(stInfo, stInfoAvailable);
       break;
     case State::LEFT_CHANGE:
       cost = getLaneChangeCost(stInfo, stInfoAvailable, state);
@@ -114,7 +136,7 @@ double PathPlanner::getStateCost(State state, StateInfo &stInfo, bool &stInfoAva
   return cost;
 }
 
-double PathPlanner::getCLStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
+double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   double cost = 0;
   SFVehicleInfo nextSF;
   double currentLane = getLane(vehicle_.d_);
@@ -301,4 +323,108 @@ bool PathPlanner::getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool 
     }
   }
   return found;
+}
+
+// Fit a polynomial.
+// Adapted from https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
+Eigen::VectorXd PathPlanner::polyfit(vector<double> xvals, vector<double> yvals, int order) {
+  assert(xvals.size() == yvals.size());
+  assert(order >= 1 && order <= xvals.size() - 1);
+
+  Eigen::MatrixXd A(xvals.size(), order + 1);
+
+  for (unsigned int i = 0; i < xvals.size(); i++) {
+    A(i, 0) = 1.0;
+  }
+
+  for (unsigned int j = 0; j < xvals.size(); j++) {
+    for (unsigned int i = 0; i < order; i++) {
+      A(j, i + 1) = A(j, i) * xvals[j];
+    }
+  }
+
+  auto Q = A.householderQr();
+  Eigen::VectorXd Yvals = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(yvals.data(), yvals.size());
+  auto result = Q.solve(Yvals);
+  return result;
+}
+
+vector<double> PathPlanner::JMT(const vector<double> &start, const vector<double> &end, const double T) {
+  /**
+   * Calculate the Jerk Minimizing Trajectory that connects the initial state
+   * to the final state in time T.
+   *
+   * @param start - the vehicles start location given as a length three array
+   *   corresponding to initial values of [s, s_dot, s_double_dot]
+   * @param end - the desired end state for vehicle. Like "start" this is a
+   *   length three array.
+   * @param T - The duration, in seconds, over which this maneuver should occur.
+   *
+   * @output an array of length 6, each value corresponding to a coefficent in 
+   *   the polynomial:
+   *   s(t) = a_0 + a_1 * t + a_2 * t**2 + a_3 * t**3 + a_4 * t**4 + a_5 * t**5
+   *
+   * EXAMPLE
+   *   > JMT([0, 10, 0], [10, 10, 0], 1)
+   *     [0.0, 10.0, 0.0, 0.0, 0.0, 0.0]
+   */
+  MatrixXd A = MatrixXd(3, 3);
+  A << T*T*T, T*T*T*T, T*T*T*T*T,
+       3*T*T, 4*T*T*T,5*T*T*T*T,
+       6*T, 12*T*T, 20*T*T*T;
+    
+  MatrixXd B = MatrixXd(3,1);     
+  B << end[0]-(start[0]+start[1]*T+.5*start[2]*T*T),
+       end[1]-(start[1]+start[2]*T),
+       end[2]-start[2];
+          
+  MatrixXd Ai = A.inverse();
+  
+  MatrixXd C = Ai*B;
+  
+  vector <double> result = {start[0], start[1], .5*start[2]};
+
+  for(int i = 0; i < C.size(); ++i) {
+    result.push_back(C.data()[i]);
+  }
+
+  return result;
+}
+
+bool PathPlanner::getPathCoordinates(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues) {
+ vector<double> startFrenetS;
+ vector<double> endFrenetS;
+ vector<double> startFrenetD;
+ vector<double> endFrenetD;
+ 
+ startFrenetS.push_back(vehicle_.s_);
+ startFrenetS.push_back(vehicle_.speed_);
+ startFrenetS.push_back(0);
+ endFrenetS.push_back(nextStateInfo.s_);
+ endFrenetS.push_back(vehicle_.speed_);
+ endFrenetS.push_back(0);
+   
+ startFrenetD.push_back(vehicle_.d_);
+ startFrenetD.push_back(0);
+ startFrenetD.push_back(0);
+ endFrenetD.push_back(nextStateInfo.d_);
+ endFrenetD.push_back(0);
+ endFrenetD.push_back(0);
+    
+ double time = 2; // 2 seconds
+ vector<double> sFrenetCoeffs = JMT(startFrenetS, endFrenetS, 2);
+ vector<double> dFrenetCoeffs = JMT(startFrenetD, endFrenetD, 2);
+ 
+ double numOfPoints = (time*1000)/20; // as points need to be captured for every 20ms
+ double t = 0;
+ for (int i = 0; i < numOfPoints; i++) {
+   double s = sFrenetCoeffs[0] + sFrenetCoeffs[1]*t + sFrenetCoeffs[2]*t*t + 
+     sFrenetCoeffs[3]*t*t*t + sFrenetCoeffs[4]*t*t*t*t + sFrenetCoeffs[5]*t*t*t*t*t;
+   double d = dFrenetCoeffs[0] + dFrenetCoeffs[1]*t + dFrenetCoeffs[2]*t*t + 
+     dFrenetCoeffs[3]*t*t*t + dFrenetCoeffs[4]*t*t*t*t + dFrenetCoeffs[5]*t*t*t*t*t;
+   vector<double> XY = getXY(s, d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+   xValues.push_back(XY[0]);
+   yValues.push_back(XY[1]); 
+  }
+  return true;
 }

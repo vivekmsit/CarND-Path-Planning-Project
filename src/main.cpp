@@ -52,11 +52,15 @@ int main() {
     map_waypoints_dx.push_back(d_x);
     map_waypoints_dy.push_back(d_y);
   }
+  
+  PathPlanner pathPlanner(map_waypoints_x,
+                 map_waypoints_y,
+                 map_waypoints_s,
+                 map_waypoints_dx,
+                 map_waypoints_dy);
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
-              (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-               uWS::OpCode opCode) {
+  h.onMessage([&pathPlanner]
+              (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -96,12 +100,6 @@ int main() {
           vector<double> next_x_vals;
           vector<double> next_y_vals;
           
-          PathPlanner pp(map_waypoints_x,
-                         map_waypoints_y,
-                         map_waypoints_s,
-                         map_waypoints_dx,
-                         map_waypoints_dy);
-          
           // Extract data and store in corresponding objects
           Vehicle vehicle(car_x, car_y, car_s, car_d, deg2rad(car_yaw), car_speed);
 
@@ -122,12 +120,11 @@ int main() {
            *   sequentially every .02 seconds
            */
           
-          std::vector<Eigen::VectorXd> path = pp.computePath(vehicle, sensorFusion, previous_path, end_path_s, end_path_d);
-          
-          /*for (int i = 0; i < 50; i++) {
-            next_x_vals.push_back(path[i].x);
-            next_y_vals.push_back(path[i].y);
-          }*/
+          std::vector<Eigen::VectorXd> path = pathPlanner.computePath(vehicle, 
+                                                                      sensorFusion, 
+                                                                      previous_path, 
+                                                                      end_path_s, 
+                                                                      end_path_d);
           
           for (auto &obj: path) {
             next_x_vals.push_back(obj[0]);

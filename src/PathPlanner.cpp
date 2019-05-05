@@ -153,7 +153,6 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     
     if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD &&
         nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
-      cost += 0.1;
       // continue with same speed
       // calculate future location here
       stInfo.d_ = vehicle_.d_;
@@ -403,7 +402,7 @@ bool PathPlanner::getPathCoordinates(const StateInfo &nextStateInfo, vector<doub
  endFrenetS.push_back(nextStateInfo.s_);
  endFrenetS.push_back(vehicle_.speed_);
  endFrenetS.push_back(0);
-   
+
  startFrenetD.push_back(vehicle_.d_);
  startFrenetD.push_back(0);
  startFrenetD.push_back(0);

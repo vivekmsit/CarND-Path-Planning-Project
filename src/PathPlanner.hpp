@@ -49,6 +49,7 @@ private:
     vector<double> map_waypoints_dx_;
     vector<double> map_waypoints_dy_;
     StateMachine stateMachine_;
+    bool laneChangeInProgress_;
 };
 
 #endif // PATHPLANNER_HPP

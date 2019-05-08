@@ -117,6 +117,7 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
       point[0] = xValues[i];
       point[1] = yValues[i];
       path.push_back(point);
+      std::cout<<"in lane change, new x is: " << point[0] << ", and new y is: " << point[1] << std::endl;
     }
     laneChangeInProgress_ = true;
   } else {
@@ -209,6 +210,7 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
   SFVehicleInfo prevSF;
   stInfoAvailable = false;
   double nextLane;
+  double next_d;
   std::string laneName;
   double currentLane = getLane(vehicle_.d_);
   if (state == State::LEFT_CHANGE) {
@@ -222,26 +224,23 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
     cost = 0.9;
     return cost;
   }
-  double nextFound = getClosestVehicle(nextSF, nextLane, true);
-  double prevFound = getClosestVehicle(prevSF, nextLane, false);
   
+  next_d = nextLane*4 + 2;
   // calculation of next x,y coordinates of vehicle in left lane after 2 seconds
   double angle = 60; // in degrees
   double next_s = vehicle_.s_ + 4*tan(rad2deg(angle));
-  double next_d;
-  if (state == State::LEFT_CHANGE) {
-    next_d = 2; // mid of left lane
-  } else {
-    next_d = 6; // mid of right lane
-  }
+
   vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
   double vehicleFuturePosX = XY[0];
   double vehicleFuturePosY = XY[1];
   
-  // Calculate equivalent X,Y coordinates in left lane if vehicle would have been there.
+  // Calculate equivalent X,Y coordinates in left/right lane if vehicle would have been there.
   XY = getXY(vehicle_.s_, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
   double vehicleCurPosX = XY[0];
   double vehicleCurPosY = XY[1];
+  
+  double nextFound = getClosestVehicle(nextSF, nextLane, true);
+  double prevFound = getClosestVehicle(prevSF, nextLane, false);
   
   if (nextFound && prevFound) {
     std::cout<<"In the " << laneName << " lane, vehicle is in front as well as in back"<<std::endl;
@@ -267,6 +266,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       // calculate future location here
       stInfo.x_ = vehicleFuturePosX;
       stInfo.y_ = vehicleFuturePosY;
+      stInfo.s_ = next_s;
+      stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
       stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
     } else {
@@ -288,6 +289,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       // calculate future location here
       stInfo.x_ = vehicleFuturePosX;
       stInfo.y_ = vehicleFuturePosY;
+      stInfo.s_ = next_s;
+      stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
       stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
     } else {
@@ -309,20 +312,24 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       // calculate future location here
       stInfo.x_ = vehicleFuturePosX;
       stInfo.y_ = vehicleFuturePosY;
+      stInfo.s_ = next_s;
+      stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(prevSF.vx_*prevSF.vx_ + prevSF.vy_*prevSF.vy_);
       stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
     } else {
         cost += 0.6;
     }
   } else {
-    // No vehicle in the left lane nearby, so lane change can happen easily
+    // No vehicle in the left/right lane nearby, so lane change can happen easily
     std::cout<<"In the " << laneName << " lane, there are no vehicles"<<std::endl;
     cost += 0.1;
     stInfoAvailable = true;
     // calculate future location here
     stInfo.x_ = vehicleFuturePosX;
     stInfo.y_ = vehicleFuturePosY;
-    stInfo.speed_ = 24; // keep the speed as maximum speed within limits
+    stInfo.s_ = next_s;
+    stInfo.d_ = next_d;
+    stInfo.speed_ = vehicle_.speed_; // keep the speed as maximum speed within limits
   }
   return cost;
 }
@@ -445,13 +452,14 @@ bool PathPlanner::getPathCoordinates(const StateInfo &nextStateInfo, vector<doub
  endFrenetD.push_back(nextStateInfo.d_);
  endFrenetD.push_back(0);
  endFrenetD.push_back(0);
-    
+
  double time = 2; // 2 seconds
- vector<double> sFrenetCoeffs = JMT(startFrenetS, endFrenetS, 2);
- vector<double> dFrenetCoeffs = JMT(startFrenetD, endFrenetD, 2);
- 
  double numOfPoints = (time*1000)/20; // as points need to be captured for every 20ms
  double t = 0;
+ double tIncrement = 0.020;
+ vector<double> sFrenetCoeffs = JMT(startFrenetS, endFrenetS, time);
+ vector<double> dFrenetCoeffs = JMT(startFrenetD, endFrenetD, time);
+  
  for (int i = 0; i < numOfPoints; i++) {
    double s = sFrenetCoeffs[0] + sFrenetCoeffs[1]*t + sFrenetCoeffs[2]*t*t + 
      sFrenetCoeffs[3]*t*t*t + sFrenetCoeffs[4]*t*t*t*t + sFrenetCoeffs[5]*t*t*t*t*t;
@@ -459,7 +467,8 @@ bool PathPlanner::getPathCoordinates(const StateInfo &nextStateInfo, vector<doub
      dFrenetCoeffs[3]*t*t*t + dFrenetCoeffs[4]*t*t*t*t + dFrenetCoeffs[5]*t*t*t*t*t;
    vector<double> XY = getXY(s, d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
    xValues.push_back(XY[0]);
-   yValues.push_back(XY[1]); 
+   yValues.push_back(XY[1]);
+   t += tIncrement;
   }
   return true;
 }

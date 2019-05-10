@@ -9,8 +9,8 @@ using Eigen::VectorXd;
 #define DISTANCE_THRESHOLD 5
 #define PATH_DURATION 2
 
-#define CURRENT_NEXT_DIST_THRESHOLD 10
-#define CURRENT_PREV_DIST_THRESHOLD 10
+#define CURRENT_NEXT_DIST_THRESHOLD 30
+#define CURRENT_PREV_DIST_THRESHOLD 30
 #define FUTURE_NEXT_DIST_THRESHOLD 3
 #define FUTURE_PREV_DIST_THRESHOLD 3
 #define DIFF_LANE_DIST_THRESHOLD 14
@@ -84,6 +84,8 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
   if (laneChangeInProgress_ && path_size > 2) {
     std::cout<<"lane change in progress, path size is: " << path_size << std::endl;
     return path; 
+  } else if(laneChangeInProgress_ && path_size <= 2) {
+    laneChangeInProgress_ = false;
   }
   
   State nextState;
@@ -102,8 +104,8 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
        nextStateAvailable = true;
        nextState = state;
       }
+      std::cout<<"cost of state " << state << " is: " << stateCost << std::endl;
     }
-    std::cout<<"state cost is: " << stateCost << std::endl;
   }
   std::cout<<"next state is: "<< nextState << std::endl;
   
@@ -120,8 +122,25 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
       std::cout<<"in lane change, new x is: " << point[0] << ", and new y is: " << point[1] << std::endl;
     }
     laneChangeInProgress_ = true;
-  } else {
-    next_d = getRoundOffD(end_path_d);
+  } else if(nextStateAvailable) {
+    if (path_size > 2) {
+      // use previous path only
+    } else {
+      // create new path here..
+      vector<double> xValues;
+      vector<double> yValues;
+      //path.clear(); // Add previous two points
+      bool status = getPathCoordinates(nextStateInfo, xValues, yValues);
+      for (int i = 0; i < xValues.size(); i++) {
+        Eigen::VectorXd point(2);
+        point[0] = xValues[i];
+        point[1] = yValues[i];
+        path.push_back(point);
+        std::cout<<"in current lane, new x is: " << point[0] << ", and new y is: " << point[1] << std::endl;
+      }
+    }
+    
+    /*next_d = getRoundOffD(end_path_d);
     if (path_size < 50) {
       for (int i =0; i<50 - path_size; i++) {
         double next_s = end_path_s + (i+1)*dist_inc;
@@ -132,7 +151,9 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
         path.push_back(point);
         std::cout<<"new point x value is: " << point[0] << " and y value is: " << point[1] << std::endl;
        }
-    }
+    }*/
+  } else {
+   // need to stop car smoothly here.. 
   }
   
   int final_size = path.size();
@@ -186,7 +207,7 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
       // continue with same speed
       // calculate future location here
       stInfo.d_ = vehicle_.d_;
-      stInfo.s_ = vehicle_.s_*PATH_DURATION;
+      stInfo.s_ = vehicle_.s_ + vehicle_.speed_*PATH_DURATION;
       stInfo.speed_ = vehicle_.speed_;
       stInfoAvailable = true;
     } else if (nextSFCurrentDist < CURRENT_NEXT_DIST_THRESHOLD) {
@@ -228,7 +249,9 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
   next_d = nextLane*4 + 2;
   // calculation of next x,y coordinates of vehicle in left lane after 2 seconds
   double angle = 60; // in degrees
-  double next_s = vehicle_.s_ + 4*tan(rad2deg(angle));
+  //double next_s = vehicle_.s_ + 4*tan(rad2deg(angle));
+  //double next_s = vehicle_.s_ + 60;
+  double next_s = vehicle_.s_ + vehicle_.speed_ * PATH_DURATION * tan(rad2deg(angle));
 
   vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
   double vehicleFuturePosX = XY[0];
@@ -453,7 +476,7 @@ bool PathPlanner::getPathCoordinates(const StateInfo &nextStateInfo, vector<doub
  endFrenetD.push_back(0);
  endFrenetD.push_back(0);
 
- double time = 2; // 2 seconds
+ double time = PATH_DURATION; // in seconds
  double numOfPoints = (time*1000)/20; // as points need to be captured for every 20ms
  double t = 0;
  double tIncrement = 0.020;
@@ -469,6 +492,7 @@ bool PathPlanner::getPathCoordinates(const StateInfo &nextStateInfo, vector<doub
    xValues.push_back(XY[0]);
    yValues.push_back(XY[1]);
    t += tIncrement;
+   std::cout<<"For " << i << " point, s is: " << s << ", d is: " << d << std::endl;
   }
   return true;
 }

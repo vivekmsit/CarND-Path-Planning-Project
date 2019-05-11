@@ -8,6 +8,9 @@ using Eigen::VectorXd;
 
 #define DISTANCE_THRESHOLD 5
 #define PATH_DURATION 2
+#define MAX_ACCELERATION 10
+#define MAX_VELOCITY 25
+#define MIN_PATH_SIZE 6
 
 #define CURRENT_NEXT_DIST_THRESHOLD 30
 #define CURRENT_PREV_DIST_THRESHOLD 30
@@ -28,7 +31,6 @@ PathPlanner::PathPlanner(vector<double> map_waypoints_x,
 }
 
 std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInfo, vector<Eigen::VectorXd> previous_path, double end_path_s, double end_path_d) {
-  
   // store data into private member variables
   vehicle_ = vehicle;
   sensorFusionList_ = sfInfo;
@@ -50,19 +52,19 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
   double next_d;
   
   if (path_size == 0) {
-    last_x = vehicle.x_;
-    last_y = vehicle.y_;
-    end_path_s = vehicle.s_;
-    end_path_d = vehicle.d_;
-    next_d = getRoundOffD(vehicle.d_);
-    for (int i =0; i<50; i++) {
-      double next_s = end_path_s + (i+1)*dist_inc;
-      vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+    StateInfo nextStateInfo;
+    nextStateInfo.d_ = vehicle_.d_;
+    nextStateInfo.s_ = vehicle.s_ + 0.5* PATH_DURATION*PATH_DURATION*(MAX_ACCELERATION-2); // S = ut + 0.5*a*t*t
+    nextStateInfo.speed_ = vehicle.speed_ + (MAX_ACCELERATION-2)*PATH_DURATION; // v = u + at
+    vector<double> xValues;
+    vector<double> yValues;
+    bool status = getPathCoordinates(nextStateInfo, xValues, yValues);
+    for (int i = 0; i < xValues.size(); i++) {
       Eigen::VectorXd point(2);
-      point[0] = XY[0];
-      point[1] = XY[1];
+      point[0] = xValues[i];
+      point[1] = yValues[i];
       path.push_back(point);
-      std::cout<<"new point x value is: " << point[0] << " and y value is: " << point[1] << std::endl;
+      std::cout<<"in current lane starting from zero speed, new x is: " << point[0] << ", and new y is: " << point[1] << std::endl;
     }
     return path;
   } else {
@@ -81,7 +83,7 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
     path.push_back(point);
   }
   
-  if (laneChangeInProgress_ && path_size > 2) {
+  if (laneChangeInProgress_ && path_size > MIN_PATH_SIZE) {
     std::cout<<"lane change in progress, path size is: " << path_size << std::endl;
     return path; 
   } else if(laneChangeInProgress_ && path_size <= 2) {
@@ -123,7 +125,7 @@ std::vector<Eigen::VectorXd> PathPlanner::computePath(Vehicle vehicle, vector<SF
     }
     laneChangeInProgress_ = true;
   } else if(nextStateAvailable) {
-    if (path_size > 2) {
+    if (path_size > MIN_PATH_SIZE) {
       // use previous path only
     } else {
       // create new path here..
@@ -202,16 +204,21 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     double nextSFCurrentDist = distance(vehicle_.x_, vehicle_.y_, nextSF.x_, nextSF.y_);
     double nextSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, nextSFFuturePosX, nextSFFuturePosY);
     std::cout<<"In current lane, next vehicle is " << nextSFCurrentDist << " distance away" << std::endl;    
-    if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD &&
-        nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
+    if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD) {
+      //  && nextSFFutureDist > FUTURE_NEXT_DIST_THRESHOLD) {
       // continue with same speed
       // calculate future location here
       stInfo.d_ = vehicle_.d_;
       stInfo.s_ = vehicle_.s_ + vehicle_.speed_*PATH_DURATION;
-      stInfo.speed_ = vehicle_.speed_;
+      stInfo.speed_ = MAX_VELOCITY-1;
       stInfoAvailable = true;
     } else if (nextSFCurrentDist < CURRENT_NEXT_DIST_THRESHOLD) {
       // current distance gap is low and thus cost is very high
+      stInfo.d_ = vehicle_.d_;
+      stInfo.s_ = vehicle_.s_ + vehicle_.speed_*PATH_DURATION;
+      double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
+      stInfo.speed_ = nextVehicleVel;
+      stInfoAvailable = true;
       cost += 0.8;
     } else if (nextSFFutureDist < FUTURE_NEXT_DIST_THRESHOLD) {
       // future distance gap is low and thus cost is high
@@ -221,6 +228,11 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     }
   } else {
     cost = 0;
+    stInfo.d_ = vehicle_.d_;
+    stInfo.s_ = vehicle_.s_ + vehicle_.speed_*PATH_DURATION;
+    //stInfo.speed_ = vehicle_.speed_;
+    stInfo.speed_ = MAX_VELOCITY-1;
+    stInfoAvailable = true;
   }
   return cost;
 }
@@ -292,7 +304,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.s_ = next_s;
       stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
+      // stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
+      stInfo.speed_ = vehicle_.speed_; // keep the speed same
     } else {
       cost += 0.6;
     }
@@ -315,7 +328,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.s_ = next_s;
       stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
+      //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
+      stInfo.speed_ = vehicle_.speed_; // keep the speed same
     } else {
         cost += 0.6;
     }
@@ -338,7 +352,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.s_ = next_s;
       stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(prevSF.vx_*prevSF.vx_ + prevSF.vy_*prevSF.vy_);
-      stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
+      //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
+      stInfo.speed_ = vehicle_.speed_; // keep the speed same
     } else {
         cost += 0.6;
     }
@@ -466,7 +481,7 @@ bool PathPlanner::getPathCoordinates(const StateInfo &nextStateInfo, vector<doub
  startFrenetS.push_back(vehicle_.speed_);
  startFrenetS.push_back(0);
  endFrenetS.push_back(nextStateInfo.s_);
- endFrenetS.push_back(vehicle_.speed_);
+ endFrenetS.push_back(nextStateInfo.speed_);
  endFrenetS.push_back(0);
 
  startFrenetD.push_back(vehicle_.d_);

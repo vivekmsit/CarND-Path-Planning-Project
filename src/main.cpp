@@ -120,11 +120,13 @@ int main() {
            *   sequentially every .02 seconds
            */
           
+          std::cout<<std::endl<<"<<================================== start ======================>>"<<std::endl;
           std::vector<Eigen::VectorXd> path = pathPlanner.computePath(vehicle, 
                                                                       sensorFusion, 
                                                                       previous_path, 
                                                                       end_path_s, 
                                                                       end_path_d);
+          std::cout<<"<<================================== end ======================>>"<<std::endl<<std::endl;
           
           for (auto &obj: path) {
             next_x_vals.push_back(obj[0]);

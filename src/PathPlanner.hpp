@@ -27,14 +27,15 @@ public:
 
 private:
     // Private Member Functions
-    double getLaneChangePath(const SFVehicleInfo &sfObj, const double &targetLane, const bool &vehicleToFollow);
     double getStateCost(State state, StateInfo &stInfo, bool &stInfoAvailable);
     double getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvailable);
     double getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, const State state);
     bool getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front);
     Eigen::VectorXd polyfit(vector<double> xvals, vector<double> yvals,	int order);
     vector<double> JMT(const vector<double> &start, const vector<double> &end, const double T);
-    bool getPathCoordinates(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);
+    bool getTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);
+    bool getJMTTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);
+    bool getSplineTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);
     
     // Private Member Variables
     Vehicle vehicle_;

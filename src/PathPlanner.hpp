@@ -33,6 +33,7 @@ private:
     bool getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front);
     Eigen::VectorXd polyfit(vector<double> xvals, vector<double> yvals,	int order);
     vector<double> JMT(const vector<double> &start, const vector<double> &end, const double T);
+    void smoothPolynomial(vector<double> inXValues, vector<double> inYValues, vector<double> &xValues, vector<double> &yValues);
     bool getTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);
     bool getJMTTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);
     bool getSplineTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);

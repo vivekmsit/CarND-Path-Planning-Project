@@ -459,14 +459,28 @@ vector<double> PathPlanner::JMT(const vector<double> &start, const vector<double
   return result;
 }
 
+void PathPlanner::smoothPolynomial(vector<double> inXValues, vector<double> inYValues, vector<double> &xValues, vector<double> &yValues) {
+  Eigen::VectorXd coeffs = polyfit(inXValues, inYValues, 2);
+  for (int i = 0; i < inXValues.size(); i++) {
+    double xValue = inXValues[i];
+    xValues.push_back(xValue);
+    double yValue = coeffs[0] + coeffs[1]*xValue + coeffs[2]*xValue*xValue;
+    yValues.push_back(yValue);
+  }
+}
+
 bool PathPlanner::getTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues) {
   bool status = false;
   if ((vehicle_.d_ != nextStateInfo.d_) || (vehicle_.speed_ != nextStateInfo.speed_)) {
     // Use JMT trajectory here
-    status = getJMTTrajectory(nextStateInfo, xValues, yValues );
+    status = getJMTTrajectory(nextStateInfo, xValues, yValues);
+    /*vector<double> localXValues;
+    vector<double> localYValues;
+    status = getJMTTrajectory(nextStateInfo, localXValues, localYValues);
+    smoothPolynomial(localXValues, localYValues, xValues, yValues);*/
   } else {
     // Use spline trajectory here as we have to continue driving in the same lane with same speed
-    status = getSplineTrajectory(nextStateInfo, xValues, yValues );
+    status = getSplineTrajectory(nextStateInfo, xValues, yValues);
   }
   return status;
 }

@@ -14,6 +14,7 @@ set(sources
     src/PathPlanner.cpp
     src/helpers.cpp
     src/StateMachine.cpp
+    src/Trajectory.cpp
 )
 
 

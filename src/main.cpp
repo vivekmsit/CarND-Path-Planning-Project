@@ -11,6 +11,7 @@
 #include "Vehicle.hpp"
 #include "SFVehicleInfo.hpp"
 #include "PathPlanner.hpp"
+#include "Trajectory.h"
 
 // for convenience
 using nlohmann::json;
@@ -121,17 +122,20 @@ int main() {
            */
           
           std::cout<<std::endl<<"<<================================== start ======================>>"<<std::endl;
-          std::vector<Eigen::VectorXd> path = pathPlanner.computePath(vehicle, 
-                                                                      sensorFusion, 
-                                                                      previous_path, 
-                                                                      end_path_s, 
-                                                                      end_path_d);
-          std::cout<<"<<================================== end ======================>>"<<std::endl<<std::endl;
           
-          for (auto &obj: path) {
-            next_x_vals.push_back(obj[0]);
-            next_y_vals.push_back(obj[1]);
+          Trajectory trajectory = pathPlanner.computePath(vehicle, 
+                                                          sensorFusion, 
+                                                          previous_path, 
+                                                          end_path_s, 
+                                                          end_path_d);
+          
+          std::cout<<"main(), trajectory size is: " << trajectory.size() << std::endl;
+          for (int i = 0; i < trajectory.size(); i++) {
+            next_x_vals.push_back(trajectory.xs_[i]);
+            next_y_vals.push_back(trajectory.ys_[i]);
           }
+          
+          std::cout<<"<<================================== end ======================>>"<<std::endl<<std::endl;
           
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;

@@ -66,7 +66,8 @@ Trajectory PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInf
     StateInfo nextStateInfo;
     nextStateInfo.d_ = vehicle_.d_;
     nextStateInfo.s_ = vehicle.s_ + 0.5* PATH_DURATION*PATH_DURATION*(MAX_ACCELERATION-2); // S = ut + 0.5*a*t*t
-    nextStateInfo.speed_ = vehicle.speed_ + (MAX_ACCELERATION-2)*PATH_DURATION; // v = u + at
+    //nextStateInfo.speed_ = vehicle.speed_ + (MAX_ACCELERATION-2)*PATH_DURATION; // v = u + at
+    nextStateInfo.speed_ = getNormalFutureSpeed();
     vector<double> xValues;
     vector<double> yValues;
     getTrajectory(nextStateInfo, xValues, yValues);
@@ -161,6 +162,30 @@ double PathPlanner::getStateCost(State state, StateInfo &stInfo, bool &stInfoAva
   return cost;
 }
 
+double PathPlanner::getNormalFutureSpeed() {
+  double nextSpeed = 0;
+  double lastPointSpeed = 0;
+  int trajSize = currentTrajectory_.size();
+  if (trajSize == 0) {
+   lastPointSpeed = vehicle_.speed_;
+  } else {
+    lastPointSpeed = currentTrajectory_.s_vels_[trajSize-1];
+  }
+  if (lastPointSpeed == 0) {
+    nextSpeed = 8;
+  } else{
+    double mult = 1.05;
+    if (lastPointSpeed < 10) {
+      mult = 1.1;
+    }
+    nextSpeed = lastPointSpeed*mult;
+  }
+  if (nextSpeed > 21) {
+   nextSpeed = 21; 
+  }
+  return nextSpeed;
+}
+
 double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   double cost = 0;
   SFVehicleInfo nextSF;
@@ -180,25 +205,26 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     std::cout<<"In current lane, next vehicle is " << nextSFCurrentDist << " distance away" << std::endl;    
     if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD) {
       // drive with maximum allowed speed
-      stInfo.d_ = vehicle_.d_;
-      stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + vehicle_.speed_*remainingPoints*0.02;
-      stInfo.speed_ = MAX_VELOCITY-1;
+      stInfo.d_ = getRoundOffD(vehicle_.d_);
+      stInfo.speed_ = getNormalFutureSpeed();
+      stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
       stInfoAvailable = true;
     } else {
       // current distance gap is low and thus cost is very high, drive with next vehicle's speed
-      stInfo.d_ = vehicle_.d_;
+      stInfo.d_ = getRoundOffD(vehicle_.d_);
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + nextVehicleVel*remainingPoints*0.02;
-      stInfo.speed_ = nextVehicleVel;
+      stInfo.speed_ = getNormalFutureSpeed();
+      stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
+      
       stInfoAvailable = true;
       cost += 0.4;
     }
   } else {
     // No vehicles in the front, so drive with maximum allowed speed
     cost = 0;
-    stInfo.d_ = vehicle_.d_;
-    stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + vehicle_.speed_*remainingPoints*0.02;
-    stInfo.speed_ = MAX_VELOCITY-1;
+    stInfo.d_ = getRoundOffD(vehicle_.d_);
+    stInfo.speed_ = getNormalFutureSpeed();
+    stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
     stInfoAvailable = true;
   }
   return cost;
@@ -272,7 +298,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
       // stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
-      stInfo.speed_ = vehicle_.speed_; // keep the speed same
+      //stInfo.speed_ = vehicle_.speed_; // keep the speed same
+      stInfo.speed_ = getNormalFutureSpeed();
     } else {
       cost += 0.6;
     }
@@ -296,7 +323,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
       //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
-      stInfo.speed_ = vehicle_.speed_; // keep the speed same
+      //stInfo.speed_ = vehicle_.speed_; // keep the speed same
+      stInfo.speed_ = getNormalFutureSpeed();
     } else {
         cost += 0.6;
     }
@@ -320,7 +348,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.d_ = next_d;
       double nextVehicleVel = std::sqrt(prevSF.vx_*prevSF.vx_ + prevSF.vy_*prevSF.vy_);
       //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
-      stInfo.speed_ = vehicle_.speed_; // keep the speed same
+      //stInfo.speed_ = vehicle_.speed_; // keep the speed same
+      stInfo.speed_ = getNormalFutureSpeed();
     } else {
         cost += 0.6;
     }
@@ -334,7 +363,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
     stInfo.y_ = vehicleFuturePosY;
     stInfo.s_ = next_s;
     stInfo.d_ = next_d;
-    stInfo.speed_ = vehicle_.speed_; // keep the speed as maximum speed within limits
+    //stInfo.speed_ = vehicle_.speed_; // keep the speed as maximum speed within limits
+    stInfo.speed_ = getNormalFutureSpeed();
   }
   return cost;
 }

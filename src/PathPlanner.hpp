@@ -66,6 +66,7 @@ private:
     spline sp_dy_s_;
     
     Trajectory currentTrajectory_;
+    int laneChangePoints_;
 };
 
 #endif // PATHPLANNER_HPP

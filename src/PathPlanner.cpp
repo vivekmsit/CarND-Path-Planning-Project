@@ -9,7 +9,7 @@ using Eigen::VectorXd;
 
 #define DISTANCE_THRESHOLD 5
 #define PATH_DURATION 2
-#define LANE_CHANGE_DURATION 1.7
+#define LANE_CHANGE_DURATION 2.5
 #define MAX_ACCELERATION 10
 #define MAX_VELOCITY 21
 #define MIN_PATH_SIZE_SAME_LANE 30
@@ -35,6 +35,7 @@ PathPlanner::PathPlanner(vector<double> map_waypoints_x,
                                                           map_waypoints_dx_(map_waypoints_dx),
                                                           map_waypoints_dy_(map_waypoints_dy) {
   laneChangeInProgress_ = false;
+  laneChangePoints_ = 0;
   buildSplines();
 }
 
@@ -62,6 +63,13 @@ Trajectory PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInf
   int pointsConsumed = currentTrajectory_.size() - previousPathSize;
   if (pointsConsumed > 0 ) {
     currentTrajectory_.removeFirstNPoints(pointsConsumed);
+    if (laneChangeInProgress_ && (laneChangePoints_ > 0)) {
+      laneChangePoints_ = laneChangePoints_ -  pointsConsumed;
+      if (laneChangePoints_ <=0) {
+        laneChangeInProgress_ = false;
+        laneChangePoints_ = 0;
+      }
+    }
   }
   
   if (previousPathSize == 0) {
@@ -77,20 +85,20 @@ Trajectory PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInf
     return currentTrajectory_;
   }
   
-  first_x = previousPath_[0][0];
+  /*first_x = previousPath_[0][0];
   first_y = previousPath_[0][1];
   last_x = previousPath_[previousPathSize-1][0];
   last_y = previousPath_[previousPathSize-1][1];
   std::cout<<"first x position is: " << first_x << " and first y position is: " << first_y << std::endl;
-  std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl; 
+  std::cout<<"last x position is: " << last_x << " and last y position is: " << last_y << std::endl;*/ 
   
   // If lane change is in progress, then use already computed path
-  if (laneChangeInProgress_ && previousPathSize > MIN_PATH_SIZE_LANE_CHANGE) {
+  if (laneChangeInProgress_ && previousPathSize > OLD_PATH_SIZE_LANE_CHANGE) {
     std::cout<<"lane change in progress, path size is: " << previousPathSize << std::endl;
     return currentTrajectory_;
-  } else if(laneChangeInProgress_ && previousPathSize <= MIN_PATH_SIZE_LANE_CHANGE) {
+  } /*else if(laneChangeInProgress_ && previousPathSize <= OLD_PATH_SIZE_LANE_CHANGE) {
     laneChangeInProgress_ = false;
-  }
+  }*/
   
   State nextState;
   StateInfo nextStateInfo;
@@ -114,9 +122,10 @@ Trajectory PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInf
   std::cout<<"next state is: "<< nextState << std::endl;
   
   if (nextStateAvailable && (nextState == LEFT_CHANGE || nextState == RIGHT_CHANGE)) {
-    currentTrajectory_.keepFirstNPoints(5);
+    //currentTrajectory_.keepFirstNPoints(5);
     getTrajectory(nextStateInfo);
     laneChangeInProgress_ = true;
+    laneChangePoints_ = currentTrajectory_.size();
   } else if(nextStateAvailable) { // same lane
     if (previousPathSize > MIN_PATH_SIZE_SAME_LANE) {
       // use previous path only
@@ -386,6 +395,11 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
     //stInfo.speed_ = vehicle_.speed_; // keep the speed as maximum speed within limits
     stInfo.speed_ = getNormalFutureSpeed();
   }
+  if (laneChangeInProgress_) {
+    // If lane Change is already in progress, do not do one more lane change
+    // Instead reduce the speed of the vehicle
+    cost = 0.9; 
+  }
   return cost;
 }
 
@@ -527,6 +541,8 @@ Trajectory PathPlanner::getJMTTrajectory(const StateInfo &nextStateInfo) {
   double last_d_acc = 0.0;
   
   std::cout<<"PathPlanner::getJMTTrajectory()"<<std::endl;
+  std::cout<<"next state info-> s: " << nextStateInfo.s_ << ", d: " << nextStateInfo.d_ << std::endl;
+  std::cout<<"nextStateInfo-> old points: " << nextStateInfo.numOldPoints_ << ", new points: " << nextStateInfo.numNewPoints_ << std::endl;
   
   int trajSize = currentTrajectory_.size();
   
@@ -550,9 +566,6 @@ Trajectory PathPlanner::getJMTTrajectory(const StateInfo &nextStateInfo) {
     last_s_acc = currentTrajectory_.s_accs_[trajSize - 1];
     last_d_acc = currentTrajectory_.d_accs_[trajSize - 1];
   }
-  
-  std::cout<<"next state info-> s: " << nextStateInfo.s_ << ", d: " << nextStateInfo.d_ << std::endl;
-  std::cout<<"nextStateInfo-> old points: " << nextStateInfo.numOldPoints_ << ", new points: " << nextStateInfo.numNewPoints_ << std::endl;
   
   vector<double> startFrenetS = {last_s, last_s_vel, last_s_acc};
   vector<double> endFrenetS = {nextStateInfo.s_, nextStateInfo.speed_, 0};

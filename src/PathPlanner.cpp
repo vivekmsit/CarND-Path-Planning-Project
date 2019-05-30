@@ -9,10 +9,12 @@ using Eigen::VectorXd;
 
 #define DISTANCE_THRESHOLD 5
 #define PATH_DURATION 2
+#define LANE_CHANGE_DURATION 1.7
 #define MAX_ACCELERATION 10
-#define MAX_VELOCITY 22
+#define MAX_VELOCITY 21
 #define MIN_PATH_SIZE_SAME_LANE 30
 #define MIN_PATH_SIZE_LANE_CHANGE 6
+#define OLD_PATH_SIZE_LANE_CHANGE 6
 #define PLANNING_DISTANCE 30
 #define MAX_FRENET_S 6945.554
 #define CONTROLLER_UPDATE_RATE_SECONDS 0.02
@@ -68,9 +70,10 @@ Trajectory PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInf
     nextStateInfo.s_ = vehicle.s_ + 0.5* PATH_DURATION*PATH_DURATION*(MAX_ACCELERATION-2); // S = ut + 0.5*a*t*t
     //nextStateInfo.speed_ = vehicle.speed_ + (MAX_ACCELERATION-2)*PATH_DURATION; // v = u + at
     nextStateInfo.speed_ = getNormalFutureSpeed();
-    vector<double> xValues;
-    vector<double> yValues;
-    getTrajectory(nextStateInfo, xValues, yValues);
+    nextStateInfo.numOldPoints_ = 0;
+    //nextStateInfo.numNewPoints_ = PATH_DURATION/0.02;
+    nextStateInfo.numNewPoints_ = 100;
+    getTrajectory(nextStateInfo);
     return currentTrajectory_;
   }
   
@@ -111,20 +114,15 @@ Trajectory PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInf
   std::cout<<"next state is: "<< nextState << std::endl;
   
   if (nextStateAvailable && (nextState == LEFT_CHANGE || nextState == RIGHT_CHANGE)) {
-    vector<double> xValues;
-    vector<double> yValues;
-    //path.clear();
     currentTrajectory_.keepFirstNPoints(5);
-    getTrajectory(nextStateInfo, xValues, yValues);
+    getTrajectory(nextStateInfo);
     laneChangeInProgress_ = true;
   } else if(nextStateAvailable) { // same lane
     if (previousPathSize > MIN_PATH_SIZE_SAME_LANE) {
       // use previous path only
     } else {
       // Add remaining points here
-      vector<double> xValues;
-      vector<double> yValues;
-      getTrajectory(nextStateInfo, xValues, yValues);
+      getTrajectory(nextStateInfo);
     }
   } else {
    // need to stop car smoothly here.. 
@@ -208,14 +206,21 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
       stInfo.d_ = getRoundOffD(vehicle_.d_);
       stInfo.speed_ = getNormalFutureSpeed();
       stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
+      stInfo.numOldPoints_ = trajSize;
+      stInfo.numNewPoints_ = remainingPoints;
       stInfoAvailable = true;
     } else {
       // current distance gap is low and thus cost is very high, drive with next vehicle's speed
       stInfo.d_ = getRoundOffD(vehicle_.d_);
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      stInfo.speed_ = getNormalFutureSpeed();
+      if (nextVehicleVel < vehicle_.speed_) {
+        stInfo.speed_ = nextVehicleVel;
+      } else {
+         stInfo.speed_ = getNormalFutureSpeed();
+      }
       stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
-      
+      stInfo.numOldPoints_ = trajSize;
+      stInfo.numNewPoints_ = remainingPoints;
       stInfoAvailable = true;
       cost += 0.4;
     }
@@ -225,6 +230,8 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     stInfo.d_ = getRoundOffD(vehicle_.d_);
     stInfo.speed_ = getNormalFutureSpeed();
     stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
+    stInfo.numOldPoints_ = trajSize;
+    stInfo.numNewPoints_ = remainingPoints;
     stInfoAvailable = true;
   }
   return cost;
@@ -256,14 +263,27 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
   double angle = 60; // in degrees
   //double next_s = vehicle_.s_ + 4*tan(rad2deg(angle));
   //double next_s = vehicle_.s_ + 60;
-  double next_s = vehicle_.s_ + vehicle_.speed_ * PATH_DURATION * tan(rad2deg(angle));
-
-  vector<double> XY = getXY(next_s, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+  double next_s = 0;
+  int trajSize = currentTrajectory_.size();
+  stInfo.numNewPoints_ = LANE_CHANGE_DURATION/0.02;
+  
+  if (trajSize == 0) {
+    next_s = vehicle_.s_;
+    stInfo.numOldPoints_ = 0;
+  } else if (trajSize < OLD_PATH_SIZE_LANE_CHANGE) {
+    next_s = currentTrajectory_.ss_[trajSize-1] + vehicle_.speed_ * PATH_DURATION * tan(rad2deg(angle));
+    stInfo.numOldPoints_ = trajSize;
+  } else {
+    next_s = currentTrajectory_.ss_[OLD_PATH_SIZE_LANE_CHANGE-1] + vehicle_.speed_ * PATH_DURATION * tan(rad2deg(angle));
+    stInfo.numOldPoints_ = OLD_PATH_SIZE_LANE_CHANGE;
+  }
+  
+  vector<double> XY = toRealWorldXY(next_s, next_d);
   double vehicleFuturePosX = XY[0];
   double vehicleFuturePosY = XY[1];
   
   // Calculate equivalent X,Y coordinates in left/right lane if vehicle would have been there.
-  XY = getXY(vehicle_.s_, next_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+  XY = toRealWorldXY(vehicle_.s_, next_d);
   double vehicleCurPosX = XY[0];
   double vehicleCurPosY = XY[1];
   
@@ -272,10 +292,10 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
   
   if (nextFound && prevFound) {
     std::cout<<"In the " << laneName << " lane, vehicle is in front as well as in back"<<std::endl;
-    double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
-    double nextSFFuturePosY = nextSF.vy_*PATH_DURATION;
-    double prevSFFuturePosX = prevSF.vx_*PATH_DURATION;
-    double prevSFFuturePosY = prevSF.vy_*PATH_DURATION;
+    double nextSFFuturePosX = nextSF.vx_*LANE_CHANGE_DURATION;
+    double nextSFFuturePosY = nextSF.vy_*LANE_CHANGE_DURATION;
+    double prevSFFuturePosX = prevSF.vx_*LANE_CHANGE_DURATION;
+    double prevSFFuturePosY = prevSF.vy_*LANE_CHANGE_DURATION;
     
     double nextSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, nextSF.x_, nextSF.y_);
     double nextSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, nextSFFuturePosX, nextSFFuturePosY);
@@ -305,8 +325,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
     }
   } else if (nextFound) {
     std::cout<<"In the " << laneName << " lane, vehicle is only in the front"<<std::endl;
-    double nextSFFuturePosX = nextSF.vx_*PATH_DURATION;
-    double nextSFFuturePosY = nextSF.vy_*PATH_DURATION;
+    double nextSFFuturePosX = nextSF.vx_*LANE_CHANGE_DURATION;
+    double nextSFFuturePosY = nextSF.vy_*LANE_CHANGE_DURATION;
   
     double nextSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, nextSF.x_, nextSF.y_);
     double nextSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, nextSFFuturePosX, nextSFFuturePosY);
@@ -330,8 +350,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
     }
   } else if (prevFound) {
     std::cout<<"In the " << laneName << " lane, vehicle is only in the back"<<std::endl;
-    double prevSFFuturePosX = prevSF.vx_*PATH_DURATION;
-    double prevSFFuturePosY = prevSF.vy_*PATH_DURATION;
+    double prevSFFuturePosX = prevSF.vx_*LANE_CHANGE_DURATION;
+    double prevSFFuturePosY = prevSF.vy_*LANE_CHANGE_DURATION;
     
     double previousSFCurrentDist = distance(vehicleCurPosX, vehicleCurPosY, prevSF.x_, prevSF.y_);
     double prevSFFutureDist = distance(vehicleFuturePosX, vehicleFuturePosY, prevSFFuturePosX, prevSFFuturePosX);
@@ -478,9 +498,9 @@ void PathPlanner::smoothPolynomial(vector<double> inXValues, vector<double> inYV
   }
 }
 
-Trajectory PathPlanner::getTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues) {
+Trajectory PathPlanner::getTrajectory(const StateInfo &nextStateInfo) {
   std::cout<<"PathPlanner::getTrajectory()"<<std::endl;
-  return getJMTTrajectory(nextStateInfo, xValues, yValues);
+  return getJMTTrajectory(nextStateInfo);
   
   //if ((vehicle_.d_ != nextStateInfo.d_) || (vehicle_.speed_ != nextStateInfo.speed_)) {
     // Use JMT trajectory here
@@ -496,7 +516,7 @@ Trajectory PathPlanner::getTrajectory(const StateInfo &nextStateInfo, vector<dou
   //return status;
 }
 
-Trajectory PathPlanner::getJMTTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues) {
+Trajectory PathPlanner::getJMTTrajectory(const StateInfo &nextStateInfo) {
   double last_x = vehicle_.x_;
   double last_y = vehicle_.y_;
   double last_s = vehicle_.s_;
@@ -506,7 +526,19 @@ Trajectory PathPlanner::getJMTTrajectory(const StateInfo &nextStateInfo, vector<
   double last_s_acc = 0.0;
   double last_d_acc = 0.0;
   
+  std::cout<<"PathPlanner::getJMTTrajectory()"<<std::endl;
+  
   int trajSize = currentTrajectory_.size();
+  
+  if (nextStateInfo.numOldPoints_ < trajSize) {
+    // some points needs to be discarded
+    currentTrajectory_.keepFirstNPoints(nextStateInfo.numOldPoints_);
+  } else if (nextStateInfo.numOldPoints_ > trajSize) {
+    // Should not reach here, return previous trajectory here..
+    return currentTrajectory_;
+  }
+  
+  trajSize = currentTrajectory_.size();
   
   if (trajSize > 0) {
     last_x = currentTrajectory_.xs_[trajSize - 1];
@@ -520,19 +552,20 @@ Trajectory PathPlanner::getJMTTrajectory(const StateInfo &nextStateInfo, vector<
   }
   
   std::cout<<"next state info-> s: " << nextStateInfo.s_ << ", d: " << nextStateInfo.d_ << std::endl;
+  std::cout<<"nextStateInfo-> old points: " << nextStateInfo.numOldPoints_ << ", new points: " << nextStateInfo.numNewPoints_ << std::endl;
   
   vector<double> startFrenetS = {last_s, last_s_vel, last_s_acc};
   vector<double> endFrenetS = {nextStateInfo.s_, nextStateInfo.speed_, 0};
   vector<double> startFrenetD = {last_d, last_d_vel, last_d_acc};
   vector<double> endFrenetD = {nextStateInfo.d_, 0, 0};
 
-  double totalPoints = (PATH_DURATION*1000)/20; // as points need to be captured for every 20ms
-  double tIncrement = 0.020;
-  int remainingPoints = totalPoints - trajSize;
-  vector<double> coeffs_s = JMT(startFrenetS, endFrenetS, remainingPoints*tIncrement);
-  vector<double> coeffs_d = JMT(startFrenetD, endFrenetD, remainingPoints*tIncrement);
+  //double totalPoints = (PATH_DURATION*1000)/20; // as points need to be captured for every 20ms
+  //double tIncrement = 0.020;
+  //int remainingPoints = totalPoints - trajSize;
+  vector<double> coeffs_s = JMT(startFrenetS, endFrenetS, nextStateInfo.numNewPoints_*CONTROLLER_UPDATE_RATE_SECONDS);
+  vector<double> coeffs_d = JMT(startFrenetD, endFrenetD, nextStateInfo.numNewPoints_*CONTROLLER_UPDATE_RATE_SECONDS);
 
-  for (int i = 0; i < remainingPoints; i++) {
+  for (int i = 0; i < nextStateInfo.numNewPoints_; i++) {
     double t = CONTROLLER_UPDATE_RATE_SECONDS * (i + 1);
     double t_2 = pow(t, 2);
     double t_3 = pow(t, 3);

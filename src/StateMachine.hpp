@@ -22,6 +22,8 @@ typedef struct {
   double speed_;
   double yaw_;
   double duration_;
+  int numOldPoints_;
+  int numNewPoints_;
 } StateInfo;
 
 class StateMachine {

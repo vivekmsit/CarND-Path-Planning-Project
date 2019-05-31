@@ -415,30 +415,6 @@ bool PathPlanner::getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool 
   return found;
 }
 
-// Fit a polynomial.
-// Adapted from https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
-Eigen::VectorXd PathPlanner::polyfit(vector<double> xvals, vector<double> yvals, int order) {
-  assert(xvals.size() == yvals.size());
-  assert(order >= 1 && order <= xvals.size() - 1);
-
-  Eigen::MatrixXd A(xvals.size(), order + 1);
-
-  for (unsigned int i = 0; i < xvals.size(); i++) {
-    A(i, 0) = 1.0;
-  }
-
-  for (unsigned int j = 0; j < xvals.size(); j++) {
-    for (unsigned int i = 0; i < order; i++) {
-      A(j, i + 1) = A(j, i) * xvals[j];
-    }
-  }
-
-  auto Q = A.householderQr();
-  Eigen::VectorXd Yvals = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(yvals.data(), yvals.size());
-  auto result = Q.solve(Yvals);
-  return result;
-}
-
 vector<double> PathPlanner::JMT(const vector<double> &start, const vector<double> &end, const double T) {
   /**
    * Calculate the Jerk Minimizing Trajectory that connects the initial state
@@ -481,16 +457,6 @@ vector<double> PathPlanner::JMT(const vector<double> &start, const vector<double
   return result;
 }
 
-void PathPlanner::smoothPolynomial(vector<double> inXValues, vector<double> inYValues, vector<double> &xValues, vector<double> &yValues) {
-  Eigen::VectorXd coeffs = polyfit(inXValues, inYValues, 2);
-  for (int i = 0; i < inXValues.size(); i++) {
-    double xValue = inXValues[i];
-    xValues.push_back(xValue);
-    double yValue = coeffs[0] + coeffs[1]*xValue + coeffs[2]*xValue*xValue;
-    yValues.push_back(yValue);
-  }
-}
-
 Trajectory PathPlanner::getTrajectory(const StateInfo &nextStateInfo) {
   double last_x = vehicle_.x_;
   double last_y = vehicle_.y_;
@@ -528,7 +494,7 @@ Trajectory PathPlanner::getTrajectory(const StateInfo &nextStateInfo) {
     last_s_acc = currentTrajectory_.s_accs_[trajSize - 1];
     last_d_acc = currentTrajectory_.d_accs_[trajSize - 1];
   }
-  
+   
   vector<double> startFrenetS = {last_s, last_s_vel, last_s_acc};
   vector<double> endFrenetS = {nextStateInfo.s_, nextStateInfo.speed_, 0};
   vector<double> startFrenetD = {last_d, last_d_vel, last_d_acc};
@@ -554,11 +520,6 @@ Trajectory PathPlanner::getTrajectory(const StateInfo &nextStateInfo) {
     double d_t_dot_dot = startFrenetD[2] + 6 * coeffs_d[3] * t + 12 * coeffs_d[4] * t_2 + 20 * coeffs_d[5] * t_3;
     double d_jerk = 6 * coeffs_d[3] + 24 * coeffs_d[4] * t + 60 * coeffs_d[5] * t_2;
     
-    // Check if next value of s is greater than max s value of the track
-    if ( s_t > MAX_FRENET_S) {
-      s_t -= MAX_FRENET_S;
-    }
-    
     vector<double> x_y = toRealWorldXY(s_t, d_t);
     double x = x_y[0];
     double y = x_y[1];
@@ -572,118 +533,6 @@ Trajectory PathPlanner::getTrajectory(const StateInfo &nextStateInfo) {
   }
   std::cout<<"PathPlanner::getTrajectory(), size is: "<< currentTrajectory_.size() << std::endl;
   return currentTrajectory_;
-}
-
-bool PathPlanner::getSplineTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues) {
-  bool status = false;
-  const double MAX_SPEED = 49.5;
-  const double MAX_ACC = .224;
-  double pre_size = previousPath_.size();
-  // Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
-  // Later we will interoplate these waypoints with a spline and fill it in with more points that control sp ...
-  vector<double> ptsx;
-  vector<double> ptsy;
-
-  // reference x,y, yaw states
-  // either we will reference the starting point as where the car is or at the previous path end point
-  double ref_x = vehicle_.x_;
-  double ref_y = vehicle_.y_;
-  double ref_yaw = deg2rad(vehicle_.yaw_);
-  double car_yaw_rad = deg2rad(vehicle_.yaw_);
-
-  // If previous path is almost empty, use the car as starting reference
-  if (pre_size < 2) {
-    // use two points that make the path tangent to the car
-    double prev_car_x = vehicle_.x_ - cos(vehicle_.yaw_);
-    double prev_car_y = vehicle_.y_ - sin(vehicle_.yaw_);
-
-    ptsx.push_back(prev_car_x);
-    ptsx.push_back(vehicle_.x_);
-
-    ptsy.push_back(prev_car_y);
-    ptsy.push_back(vehicle_.y_);
-  } else { // use the previous path's end point as starting reference
-    // redefine reference state as previous path end point
-    ref_x = previousPath_[pre_size - 1][0];
-    ref_y = previousPath_[pre_size - 1][1];
-
-    double ref_x_prev = previousPath_[pre_size - 2][0];
-    double ref_y_prev = previousPath_[pre_size - 2][1];
-    ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
-
-    // use two points that make the path tangent to the previous path's end point
-    ptsx.push_back(ref_x_prev);
-    ptsx.push_back(ref_x);
-
-    ptsy.push_back(ref_y_prev);
-    ptsy.push_back(ref_y);
-  }
-
-  // In Frenet add evenly 30m spaced points ahead of the starting reference.
-  for (int i = 0; i < 3; i++){
-    double target_s = vehicle_.s_ + PLANNING_DISTANCE * (i + 1);
-    if (target_s > MAX_FRENET_S) {
-      target_s -= MAX_FRENET_S;
-    }
-    double target_d = vehicle_.d_;
-    vector<double> next_wp = getXY(target_s, target_d, map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
-    ptsx.push_back(next_wp[0]);
-    ptsy.push_back(next_wp[1]);
-  }
-  
-  // Making coordinates to local car coordinates.
-  for ( int i = 0; i < ptsx.size(); i++ ) {
-    double shift_x = ptsx[i] - ref_x;
-    double shift_y = ptsy[i] - ref_y;
-    ptsx[i] = shift_x * cos(0 - ref_yaw) - shift_y * sin(0 - ref_yaw);
-    ptsy[i] = shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw);
-  }
-
-  // create a spline
-  tk::spline s;
-  // set(x, y) points to the spline
-  s.set_points(ptsx, ptsy);
-  
-  // Start with all of the previous path points from last time
-  for (int i = 0; i < pre_size; i++){
-    xValues.push_back(previousPath_[i][0]);
-    yValues.push_back(previousPath_[i][1]);
-  }
-  
-  // Calculate distance y position on 30 m ahead.
-  double target_x = 30.0;
-  double target_y = s(target_x);
-  double target_dist = sqrt(target_x*target_x + target_y*target_y);
-  double x_add_on = 0;
-  double ref_vel = vehicle_.speed_;
-
-  for( int i = 1; i < 50 - pre_size; i++ ) {
-    /*ref_vel += speed_diff;
-    if ( ref_vel > MAX_SPEED ) {
-      ref_vel = MAX_SPEED;
-    } else if ( ref_vel < MAX_ACC ) {
-      ref_vel = MAX_ACC;
-    }*/
-    double N = target_dist/(0.02*ref_vel/2.24);
-    double x_point = x_add_on + target_x/N;
-    double y_point = s(x_point);
-
-    x_add_on = x_point;
-
-    double x_ref = x_point;
-    double y_ref = y_point;
-
-    x_point = x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw);
-    y_point = x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw);
-
-    x_point += ref_x;
-    y_point += ref_y;
-
-    xValues.push_back(x_point);
-    yValues.push_back(y_point);
-    std::cout<<"PathPlanner::getSplineTrajectory(), new x is:" << x_point << ", new y is: " << y_point <<std::endl;
-  }
-  return true;
 }
 
 void PathPlanner::buildSplines() {

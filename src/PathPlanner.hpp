@@ -39,7 +39,6 @@ private:
     vector<double> JMT(const vector<double> &start, const vector<double> &end, const double T);
     void smoothPolynomial(vector<double> inXValues, vector<double> inYValues, vector<double> &xValues, vector<double> &yValues);
     Trajectory getTrajectory(const StateInfo &nextStateInfo);
-    Trajectory getJMTTrajectory(const StateInfo &nextStateInfo);
     bool getSplineTrajectory(const StateInfo &nextStateInfo, vector<double> &xValues, vector<double> &yValues);
     void buildSplines();
     vector<double> toRealWorldXY(double s, double d);

@@ -19,11 +19,11 @@ using Eigen::VectorXd;
 #define MAX_FRENET_S 6945.554
 #define CONTROLLER_UPDATE_RATE_SECONDS 0.02
 
-#define CURRENT_NEXT_DIST_THRESHOLD 20
+#define CURRENT_NEXT_DIST_THRESHOLD 30
 #define CURRENT_PREV_DIST_THRESHOLD 20
 #define FUTURE_NEXT_DIST_THRESHOLD 3
 #define FUTURE_PREV_DIST_THRESHOLD 3
-#define DIFF_LANE_DIST_THRESHOLD 25
+#define DIFF_LANE_DIST_THRESHOLD 30
 
 PathPlanner::PathPlanner(vector<double> map_waypoints_x,
                         vector<double> map_waypoints_y,
@@ -146,8 +146,38 @@ double PathPlanner::getStateCost(State state, StateInfo &stInfo, bool &stInfoAva
   return cost;
 }
 
-// approximate speed after PATH_DURATION time
-double PathPlanner::getNormalFutureSpeed() {
+double PathPlanner::getNormalFutureSpeed(int numPoints, double desiredSpeed = MAX_VELOCITY - 1) {
+  double nextSpeed = 0;
+  int trajSize = currentTrajectory_.size();
+  double lastPointSpeed = lastPointSpeed = currentTrajectory_.s_vels_[trajSize-1];
+  if (desiredSpeed > MAX_VELOCITY - 1) {
+    desiredSpeed = MAX_VELOCITY - 1;
+  }
+  if (desiredSpeed > lastPointSpeed) {
+    double maxSpeedCurrentIteration = lastPointSpeed + numPoints*0.2; // less than 0.224
+    if (maxSpeedCurrentIteration >= desiredSpeed) {
+      // desired speed can be achieved by given number of points
+      nextSpeed = desiredSpeed;
+    } else {
+      // desired speed need more points, so set next speed to speed having acceleration within limits 
+      nextSpeed = maxSpeedCurrentIteration;
+    }
+  } else if (desiredSpeed < lastPointSpeed) {
+    double minSpeedCurrentIteration = lastPointSpeed - numPoints*0.2;
+    if (minSpeedCurrentIteration <= desiredSpeed) {
+      // desired speed can be achieved by given number of points
+      nextSpeed = desiredSpeed;
+    } else {
+      // desired speed need more points, so set next speed to speed having acceleration within limits 
+      nextSpeed = minSpeedCurrentIteration;
+    }
+  } else {
+    nextSpeed = desiredSpeed;
+  }
+  return nextSpeed;
+}
+
+/*double PathPlanner::getNormalFutureSpeed(int numPoints, double desiredSpeed = MAX_VELOCITY) {
   double nextSpeed = 0;
   double lastPointSpeed = 0;
   int trajSize = currentTrajectory_.size();
@@ -170,7 +200,7 @@ double PathPlanner::getNormalFutureSpeed() {
    nextSpeed = 19; 
   }
   return nextSpeed;
-}
+}*/
 
 double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   double cost = 0;
@@ -192,7 +222,7 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD) {
       // drive with maximum allowed speed
       stInfo.d_ = getRoundOffD(vehicle_.d_);
-      stInfo.speed_ = getNormalFutureSpeed();
+      stInfo.speed_ = getNormalFutureSpeed(remainingPoints);
       stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
       stInfo.numOldPoints_ = trajSize;
       stInfo.numNewPoints_ = remainingPoints;
@@ -201,11 +231,12 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
       // current distance gap is low and thus cost is very high, drive with next vehicle's speed
       stInfo.d_ = getRoundOffD(vehicle_.d_);
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      if (nextVehicleVel < vehicle_.speed_) {
-        stInfo.speed_ = nextVehicleVel;
+      stInfo.speed_ = getNormalFutureSpeed(remainingPoints, nextVehicleVel);
+      /*if (nextVehicleVel < vehicle_.speed_) {
+        
       } else {
-         stInfo.speed_ = getNormalFutureSpeed();
-      }
+         stInfo.speed_ = getNormalFutureSpeed(remainingPoints);
+      }*/
       stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
       stInfo.numOldPoints_ = trajSize;
       stInfo.numNewPoints_ = remainingPoints;
@@ -216,7 +247,7 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     // No vehicles in the front, so drive with maximum allowed speed
     cost = 0;
     stInfo.d_ = getRoundOffD(vehicle_.d_);
-    stInfo.speed_ = getNormalFutureSpeed();
+    stInfo.speed_ = getNormalFutureSpeed(remainingPoints);
     stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
     stInfo.numOldPoints_ = trajSize;
     stInfo.numNewPoints_ = remainingPoints;
@@ -307,7 +338,7 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
       // stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
       //stInfo.speed_ = vehicle_.speed_; // keep the speed same
-      stInfo.speed_ = getNormalFutureSpeed();
+      stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
     } else {
       cost += 0.6;
     }
@@ -332,7 +363,7 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
       //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
       //stInfo.speed_ = vehicle_.speed_; // keep the speed same
-      stInfo.speed_ = getNormalFutureSpeed();
+      stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
     } else {
         cost += 0.6;
     }
@@ -357,7 +388,7 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       double nextVehicleVel = std::sqrt(prevSF.vx_*prevSF.vx_ + prevSF.vy_*prevSF.vy_);
       //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
       //stInfo.speed_ = vehicle_.speed_; // keep the speed same
-      stInfo.speed_ = getNormalFutureSpeed();
+      stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
     } else {
         cost += 0.6;
     }
@@ -372,7 +403,7 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
     stInfo.s_ = next_s;
     stInfo.d_ = next_d;
     //stInfo.speed_ = vehicle_.speed_; // keep the speed as maximum speed within limits
-    stInfo.speed_ = getNormalFutureSpeed();
+    stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
   }
   if (laneChangeInProgress_) {
     // If lane Change is already in progress, do not do one more lane change

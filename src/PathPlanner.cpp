@@ -47,18 +47,11 @@ Trajectory PathPlanner::computePath(Vehicle vehicle, vector<SFVehicleInfo> sfInf
   end_path_s_ = end_path_s;
   end_path_d_ = end_path_d;
   
-  std::vector<Eigen::VectorXd> path;
-  double dist_inc = 0.4;
-  vehicle_.print();
   int previousPathSize = previousPath_.size();
+
+  /*vehicle_.print();
   std::cout<<"size of previous path is: " << previousPathSize << std::endl;
-  std::cout<<"end_path_s is: " << end_path_s_ << ", end_path_d: " << end_path_d_ << std::endl;
-  
-  double first_x;
-  double first_y;
-  double last_x;
-  double last_y;
-  double next_d;
+  std::cout<<"end_path_s is: " << end_path_s_ << ", end_path_d: " << end_path_d_ << std::endl;*/
   
   int pointsConsumed = currentTrajectory_.size() - previousPathSize;
   if (pointsConsumed > 0 ) {
@@ -146,15 +139,18 @@ double PathPlanner::getStateCost(State state, StateInfo &stInfo, bool &stInfoAva
   return cost;
 }
 
-double PathPlanner::getNormalFutureSpeed(int numPoints, double desiredSpeed = MAX_VELOCITY - 1) {
+double PathPlanner::getNextStateParams(StateInfo &stInfo, double desiredSpeed = MAX_VELOCITY - 1, bool isLaneChange = false) {
   double nextSpeed = 0;
+  int remainingPoints = stInfo.numNewPoints_;
   int trajSize = currentTrajectory_.size();
+  double maxAcceleration = MAX_ACCELERATION-4;
+  double speedIncrement = maxAcceleration*0.02;
   double lastPointSpeed = lastPointSpeed = currentTrajectory_.s_vels_[trajSize-1];
   if (desiredSpeed > MAX_VELOCITY - 1) {
     desiredSpeed = MAX_VELOCITY - 1;
   }
   if (desiredSpeed > lastPointSpeed) {
-    double maxSpeedCurrentIteration = lastPointSpeed + numPoints*0.2; // less than 0.224
+    double maxSpeedCurrentIteration = lastPointSpeed + remainingPoints*speedIncrement; // less than 0.224
     if (maxSpeedCurrentIteration >= desiredSpeed) {
       // desired speed can be achieved by given number of points
       nextSpeed = desiredSpeed;
@@ -163,7 +159,7 @@ double PathPlanner::getNormalFutureSpeed(int numPoints, double desiredSpeed = MA
       nextSpeed = maxSpeedCurrentIteration;
     }
   } else if (desiredSpeed < lastPointSpeed) {
-    double minSpeedCurrentIteration = lastPointSpeed - numPoints*0.2;
+    double minSpeedCurrentIteration = lastPointSpeed - remainingPoints*speedIncrement;
     if (minSpeedCurrentIteration <= desiredSpeed) {
       // desired speed can be achieved by given number of points
       nextSpeed = desiredSpeed;
@@ -174,33 +170,15 @@ double PathPlanner::getNormalFutureSpeed(int numPoints, double desiredSpeed = MA
   } else {
     nextSpeed = desiredSpeed;
   }
-  return nextSpeed;
+  double lastFrenetS = currentTrajectory_.ss_[trajSize-1];
+  double remainingTime = remainingPoints*0.02;
+  double targetAcceleration = (nextSpeed - lastPointSpeed)/remainingTime; // a = (v - u)/t
+  if (!isLaneChange) {
+    // S = u0 + ut + 1/2at2
+    stInfo.s_ = lastFrenetS + lastPointSpeed*remainingTime + 0.5*targetAcceleration*remainingTime*remainingTime;
+  }
+  stInfo.speed_ = nextSpeed;
 }
-
-/*double PathPlanner::getNormalFutureSpeed(int numPoints, double desiredSpeed = MAX_VELOCITY) {
-  double nextSpeed = 0;
-  double lastPointSpeed = 0;
-  int trajSize = currentTrajectory_.size();
-  if (trajSize == 0) {
-   lastPointSpeed = vehicle_.speed_;
-  } else {
-    lastPointSpeed = currentTrajectory_.s_vels_[trajSize-1];
-  }
-  if (lastPointSpeed == 0) {
-    nextSpeed = 8;
-  } else{
-    double mult = 1.05;
-    if (lastPointSpeed < 10) {
-      mult = 1.1;
-    }
-    // keep on increasing speed until 19
-    nextSpeed = lastPointSpeed*mult;
-  }
-  if (nextSpeed > 19) {
-   nextSpeed = 19; 
-  }
-  return nextSpeed;
-}*/
 
 double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvailable) {
   double cost = 0;
@@ -222,24 +200,17 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     if (nextSFCurrentDist > CURRENT_NEXT_DIST_THRESHOLD) {
       // drive with maximum allowed speed
       stInfo.d_ = getRoundOffD(vehicle_.d_);
-      stInfo.speed_ = getNormalFutureSpeed(remainingPoints);
-      stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
       stInfo.numOldPoints_ = trajSize;
       stInfo.numNewPoints_ = remainingPoints;
+      getNextStateParams(stInfo);
       stInfoAvailable = true;
     } else {
       // current distance gap is low and thus cost is very high, drive with next vehicle's speed
       stInfo.d_ = getRoundOffD(vehicle_.d_);
-      double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      stInfo.speed_ = getNormalFutureSpeed(remainingPoints, nextVehicleVel);
-      /*if (nextVehicleVel < vehicle_.speed_) {
-        
-      } else {
-         stInfo.speed_ = getNormalFutureSpeed(remainingPoints);
-      }*/
-      stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
       stInfo.numOldPoints_ = trajSize;
       stInfo.numNewPoints_ = remainingPoints;
+      double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
+      getNextStateParams(stInfo, nextVehicleVel);
       stInfoAvailable = true;
       cost += 0.4;
     }
@@ -247,10 +218,9 @@ double PathPlanner::getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvail
     // No vehicles in the front, so drive with maximum allowed speed
     cost = 0;
     stInfo.d_ = getRoundOffD(vehicle_.d_);
-    stInfo.speed_ = getNormalFutureSpeed(remainingPoints);
-    stInfo.s_ = currentTrajectory_.ss_[trajSize-1] + stInfo.speed_*remainingPoints*0.02;
     stInfo.numOldPoints_ = trajSize;
     stInfo.numNewPoints_ = remainingPoints;
+    getNextStateParams(stInfo);
     stInfoAvailable = true;
   }
   return cost;
@@ -280,8 +250,6 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
   next_d = nextLane*4 + 2;
   // calculation of next x,y coordinates of vehicle in left lane after 2 seconds
   double angle = 60; // in degrees
-  //double next_s = vehicle_.s_ + 4*tan(rad2deg(angle));
-  //double next_s = vehicle_.s_ + 60;
   double next_s = 0;
   int trajSize = currentTrajectory_.size();
   stInfo.numNewPoints_ = LANE_CHANGE_DURATION/0.02;
@@ -335,10 +303,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.y_ = vehicleFuturePosY;
       stInfo.s_ = next_s;
       stInfo.d_ = next_d;
-      double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      // stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
-      //stInfo.speed_ = vehicle_.speed_; // keep the speed same
-      stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
+      //double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
+      getNextStateParams(stInfo, vehicle_.speed_, true);
     } else {
       cost += 0.6;
     }
@@ -360,10 +326,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.y_ = vehicleFuturePosY;
       stInfo.s_ = next_s;
       stInfo.d_ = next_d;
-      double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
-      //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
-      //stInfo.speed_ = vehicle_.speed_; // keep the speed same
-      stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
+      //double nextVehicleVel = std::sqrt(nextSF.vx_*nextSF.vx_ + nextSF.vy_*nextSF.vy_);
+      getNextStateParams(stInfo, vehicle_.speed_, true);
     } else {
         cost += 0.6;
     }
@@ -385,10 +349,8 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
       stInfo.y_ = vehicleFuturePosY;
       stInfo.s_ = next_s;
       stInfo.d_ = next_d;
-      double nextVehicleVel = std::sqrt(prevSF.vx_*prevSF.vx_ + prevSF.vy_*prevSF.vy_);
-      //stInfo.speed_ = nextVehicleVel; // keep the speed as speed of next vehicle
-      //stInfo.speed_ = vehicle_.speed_; // keep the speed same
-      stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
+      //double nextVehicleVel = std::sqrt(prevSF.vx_*prevSF.vx_ + prevSF.vy_*prevSF.vy_);
+      getNextStateParams(stInfo, vehicle_.speed_, true);
     } else {
         cost += 0.6;
     }
@@ -402,8 +364,7 @@ double PathPlanner::getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, 
     stInfo.y_ = vehicleFuturePosY;
     stInfo.s_ = next_s;
     stInfo.d_ = next_d;
-    //stInfo.speed_ = vehicle_.speed_; // keep the speed as maximum speed within limits
-    stInfo.speed_ = getNormalFutureSpeed(stInfo.numNewPoints_);
+    getNextStateParams(stInfo, vehicle_.speed_, true);
   }
   if (laneChangeInProgress_) {
     // If lane Change is already in progress, do not do one more lane change

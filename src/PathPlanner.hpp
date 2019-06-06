@@ -31,7 +31,7 @@ public:
 private:
     // Private Member Functions
     double getStateCost(State state, StateInfo &stInfo, bool &stInfoAvailable);
-    double getNormalFutureSpeed(int numPoints, double desiredSpeed);
+    double getNextStateParams(StateInfo &stInfo, double desiredSpeed, bool isLaneChange);
     double getCurrentLaneStateCost(StateInfo &stInfo, bool &stInfoAvailable);
     double getLaneChangeCost(StateInfo &stInfo, bool &stInfoAvailable, const State state);
     bool getClosestVehicle(SFVehicleInfo &sFVehicle, double lane, bool front);
